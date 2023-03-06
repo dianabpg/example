@@ -1,36 +1,4568 @@
 ---
-title: "Untitled"
+title: "Phase-type Distributions"
 output: 
   flexdashboard::flex_dashboard:
     orientation: columns
     vertical_layout: fill
+runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
+library("shiny")
+library(shinyjs)
+library(shinyMatrix)
+library(shinythemes)
+library(expm)
+library(muhaz)
+library(expm)
+library(goftest)
 ```
 
-Column {data-width=650}
------------------------------------------------------------------------
-
-### Chart A
+Distribution
+=======================================================================
 
 ```{r}
+shinyApp(
+  
+ui <- fluidPage(
+    tags$div(HTML("<script type='text/x-mathjax-config' >
+                MathJax.Hub.Config({
+                showProcessingMessages: true,
+                jax: ['input/TeX', 'output/PreviewHTML'],
+                });
+                </script >
+                ")),
+  # App title ----
+  useShinyjs(),
+  withMathJax(uiOutput("entered", inline = TRUE)),
+  title = "Phase-type distribution (PHD)",
+  theme = shinytheme("cerulean"),
+  fluidRow(
+    wellPanel(style="background-color:#427fa5", 
+              h1("Phase-type distribution (PHD)",style = "text-align:center;font-weight:bold;color:white;")
+    )
+  ),
+  sidebarLayout(
+    sidebarPanel("", 
+                 selectInput("dist","Choose the distribution: ", choices =
+                               list("Exponential", "Erlang", "Generalized Erlang", "Coxian",
+                                    "General")),
+                 conditionalPanel(
+                   condition = "input.dist == 'Exponential'",
+                   h4(strong("Exponential Distribution")),
+                   p("Exponential Distribution has the following form:"),
+                   p('$$F(t) = 1 - \\exp(-\\lambda t), \\ t \\geq 0 $$ 
+               con \\(\\boldsymbol{\\alpha} = 1\\), \\( \\mathbf{T} = - \\lambda \\) y \\( m = 1\\)')
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Erlang'",
+                   h4(strong("Erlang Distribution")),
+                   p("Erlang Distribution has the following form:"),
+                   p('$$F(t) = 1 - \\sum_{j = 0}^{m-1} e^{-\\lambda t} (\\lambda t)^j / j!, \\ t \\geq 0 \\
+                     para \\ m \\geq 1 \\ y \\ \\lambda > 0:$$'),
+                   p('$$\\boldsymbol{\\alpha} = (0, 0, \\cdots , 1) \\\\ 
+                   \\mathbf{T} =\\begin{pmatrix}
+                   -\\lambda &  &  & \\\\ 
+                   \\lambda  & -\\lambda  &  & \\\\ 
+                   & \\ddots & \\ddots & \\\\ 
+                   &  &  \\lambda & -\\lambda 
+                     \\end{pmatrix}_{m\\times m}$$')
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Generalized Erlang'",
+                   h4(strong("Generalized Erlang Distribution")),
+                   p("Generalized Erlang Distribution has the following form:"),
+                   p('$$F(t) = 1 - \\sum_{k = 1}^{m} \\alpha_k \\left ( \\sum_{j=0}^{k-1} e^{-\\lambda t }
+                     (\\lambda t)^j /j! \\right ) \\ t \\geq 0, \\ \\lambda > 0:$$'),
+                   p('$$\\boldsymbol{\\alpha} = (\\alpha_1, \\alpha_2, \\cdots , \\alpha_m) \\\\
+                   \\mathbf{T} =\\begin{pmatrix}
+                   -\\lambda &  &  & \\\\
+                   \\lambda  & -\\lambda  &  & \\\\
+                   & \\ddots & \\ddots & \\\\
+                   &  &  \\lambda & -\\lambda
+                     \\end{pmatrix}_{m\\times m}$$')
+                 ),
+                 
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Coxian'",
+                   h4(strong("Coxian Distribution")),
+                   p("Coxian Distribution has the following form:"),
+                   p('$$F(t) = 1 - \\sum_{k= 1}^{m} \\alpha_k \\left (\\sum_{j = 1}^k e^{-\\lambda_j t}
+                   \\prod_{i=1, i\\neq j}^{k} \\left( \\frac{\\lambda_i}{\\lambda_i - \\lambda_j} \\right ) \\right )
+                     \\ t \\geq 0:$$'),
+                   p('$$\\boldsymbol{\\alpha} = (\\alpha_1, \\alpha_2, \\cdots , \\alpha_m) \\\\
+                  \\mathbf{T} =\\begin{pmatrix}
+                  -\\lambda_1 &  &  & \\\\
+                  \\lambda_2  & -\\lambda_2  &  & \\\\
+                  & \\ddots & \\ddots & \\\\
+                  &  &  \\lambda_m & -\\lambda_m
+                    \\end{pmatrix}_{m\\times m}$$')
+                   
+                 ), 
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'General'",
+                   h4(strong("General Distribution")),
+                   p("General Distribution has the following form:"),
+                   p('$$\\boldsymbol{\\alpha} = (\\alpha_1, \\alpha_2, \\cdots, \\alpha_m)$$'),
+                   p('$$\\mathbf{T} =\\begin{pmatrix}
+                   -\\lambda_{1} & \\lambda_{12} & \\cdots & \\lambda_{1m} \\\\
+                   \\lambda_{21} & -\\lambda_{2} & \\cdots & \\lambda_{2m} \\\\ 
+                   \\vdots & \\vdots & \\ddots  & \\vdots \\\\
+                   \\lambda_{m1} & \\lambda_{m2} & \\cdots & -\\lambda_{m}
+                   \\end{pmatrix}_{m\\times m}$$')
+                 ),
+                 
+                 
+                 selectInput("tamano","Number of states: ", choices =
+                               list('m=1', 'm=2', 'm=3', 'm=4')),
+                 numericInput("malla", "Maximum time of domain: ", value = 1),
+                 conditionalPanel(
+                   condition = "input.dist == 'Exponential' && input.tamano == 'm=1'",
+                   p("$$ m = 1, \\ \\boldsymbol{\\alpha} = 1 $$"),
+                   numericInput("lambda","$$\\lambda$$", value = 1, min=1, step = 0.01),
+                   ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Erlang' && input.tamano == 'm=2'",
+                   fluidRow(
+                     column(4, numericInput("lambda_e2","$$\\lambda$$", value = 1, min=1, step = 0.01)),
+                     column(5, strong("Transition Matrix"), br(), tableOutput("hot"))
+                   ),
+                   p("$$\\boldsymbol{\\alpha} = (0,1)$$")
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Erlang' && input.tamano == 'm=3'",
+                   fluidRow(
+                     column(4, numericInput("lambda_e3","$$\\lambda$$", value = 1, min=1, step = 0.01)),
+                     column(5, strong("Transition Matrix"), tableOutput("hot3"))
+                   ),
+                   p("$$\\boldsymbol{\\alpha} = (0,0,1)$$")
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Erlang' && input.tamano == 'm=4'",
+                   fluidRow(
+                     column(4, numericInput("lambda_e","$$\\lambda$$", value = 1, min=1, step = 0.01)), 
+                     column(6, strong("Transition Matrix"), tableOutput("hot4"))
+                   ),
+                   p("$$\\boldsymbol{\\alpha} = (0,0,0,1)$$")
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Generalized Erlang' && input.tamano == 'm=2'",
+                   fluidRow(
+                     column(4, numericInput("lambda_eg2","$$\\lambda$$", value = 1, min=1, step = 0.01)),
+                     column(5, strong("Transition Matrix"), tableOutput("hot2_eg"))
+                   ),
+                   fluidRow(
+                     column(5, numericInput("alpha_1_2","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.01),),
+                     column(3, p("$$\\alpha_2 = 1 - \\alpha_1$$")),
+                   ), 
+                 ), 
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Generalized Erlang' && input.tamano == 'm=3'",
+                   fluidRow(
+                     column(4, numericInput("lambda_eg3","$$\\lambda$$", value = 1, min=1, step = 0.01)),
+                     column(5, strong("Transition Matrix"), tableOutput("hot3_eg"))
+                   ),
+                   fluidRow(column(4, numericInput("alpha_1_3","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                            column(4, numericInput("alpha_2_3","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)),
+                            column(4, p("$$\\alpha_3 = 1 - (\\alpha_1 + \\alpha_2)$$")) 
+                            ),
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Generalized Erlang' && input.tamano == 'm=4'",
+                   fluidRow(
+                     column(4, numericInput("lambda_eg","$$\\lambda$$", value = 1, min=1,step = 0.01)),
+                     column(6, strong("Transition Matrix"), tableOutput("hot_eg"))
+                   ),
+                   fluidRow(column(4, numericInput("alpha_1","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                            column(4, numericInput("alpha_2","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)),
+                            column(4, numericInput("alpha_3","$$\\alpha_3$$", value = 0, min=0, max = 1, step = 0.1)),
+                   ),
+                   p("$$\\alpha_4 = 1 - (\\alpha_1 + \\alpha_2 + \\alpha_3)$$")
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Coxian' && input.tamano == 'm=2'",
+                   fluidRow(
+                     column(3, numericInput("lambda_1_2","$$\\lambda_1$$", value = 1, min=1,step = 0.01)),
+                     column(3, numericInput("lambda_2_2","$$\\lambda_2$$", value = 1, min=1,step = 0.01)),
+                     column(4, strong("Transition Matrix"),tableOutput("mCoxiana_2")),
+                   ),
+                   fluidRow(
+                     column(5, numericInput("alpha_1c_2","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1) ),
+                     column(5, p("$$\\alpha_2 = 1 - \\alpha_1$$")),
+                   ),
+                   
+                 ),
+                 
+                 
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Coxian' && input.tamano == 'm=3'",
+                   
+                   fluidRow(
+                     column(4, numericInput("lambda_1_3","$$\\lambda_1$$", value = 1, min=1, step = 0.01)),
+                     column(4, numericInput("lambda_2_3","$$\\lambda_2$$", value = 1, min=1, step = 0.01)),
+                     column(4, numericInput("lambda_3_3","$$\\lambda_3$$", value = 1, min=1, step = 0.01)), 
+                   ),
+                   
+                   fluidRow(align="center",strong("Transition Matrix"),tableOutput("mCoxiana_3")),
+                   fluidRow(
+                     column(3, numericInput("alpha_1c_3","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(3, numericInput("alpha_2c_3","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(3, p("$$\\alpha_3 = 1 - (\\alpha_1 + \\alpha_2)$$"))
+                   ),
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Coxian' && input.tamano == 'm=4'",
+                   fluidRow(
+                     column(3, numericInput("lambda_1","$$\\lambda_1$$", value = 1, min=1, step = 0.01)),
+                     column(3, numericInput("lambda_2","$$\\lambda_2$$", value = 1, min=1, step = 0.01)),
+                     column(3, numericInput("lambda_3","$$\\lambda_3$$", value = 1, min=1, step = 0.01)), 
+                     column(3, numericInput("lambda_4","$$\\lambda_4$$", value = 1, min=1, step = 0.01)), 
+                   ),
+                   fluidRow(align = "center", strong("Transition Matrix"),
+                            tableOutput("mCoxiana")),
+                  
+                   fluidRow(
+                     column(4, numericInput("alpha_1c","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(4, numericInput("alpha_2c","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)), 
+                     column(4, numericInput("alpha_3c","$$\\alpha_3$$", value = 0, min=0, max = 1, step = 0.1)),
+                   ),
+                   p("$$\\alpha_4 = 1 - (\\alpha_1 + \\alpha_2 + \\alpha_3)$$")
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'General' && input.tamano == 'm=4'",
+                   fluidRow(
+                     column(3,numericInput("lambda_11","$$\\lambda_1$$", value = 1, min=1, step = 0.01)),
+                     column(3, numericInput("lambda_12","$$\\lambda_{12}$$", value = 0, min=0, step = 0.01)),
+                     column(3, numericInput("lambda_13","$$\\lambda_{13}$$", value = 0, min=0, step = 0.01)),
+                     column(3, numericInput("lambda_14","$$\\lambda_{14}$$", value = 0, min=0, step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(3, numericInput("lambda_21","$$\\lambda_{21}$$", value = 0, min=0, step = 0.01)),
+                     column(3, numericInput("lambda_22","$$\\lambda_2$$", value = 1, min=1, step = 0.01)),
+                     column(3, numericInput("lambda_23","$$\\lambda_{23}$$", value = 0, min=0, step = 0.01)),
+                     column(3, numericInput("lambda_24","$$\\lambda_{24}$$", value = 0, min=0, step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(3,numericInput("lambda_31","$$\\lambda_{31}$$", value = 0, min=0, step = 0.01) ),
+                     column(3, numericInput("lambda_32","$$\\lambda_{32}$$", value = 0, min=0, step = 0.01) ),
+                     column(3, numericInput("lambda_33","$$\\lambda_3$$", value = 1, min=1, step = 0.01) ),
+                     column(3, numericInput("lambda_34","$$\\lambda_{34}$$", value = 0, min=0, step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(3,numericInput("lambda_41","$$\\lambda_{41}$$", value = 0, min=0, step = 0.01)),
+                     column(3, numericInput("lambda_42","$$\\lambda_{42}$$", value = 0, min=0, step = 0.01)),
+                     column(3, numericInput("lambda_43","$$\\lambda_{43}$$", value = 0, min=0, step = 0.01)),
+                     column(3, numericInput("lambda_44","$$\\lambda_4$$", value = 1, min=1, step = 0.01)),
+                   ),
+                   
+                   fluidRow(
+                     column(4, numericInput("alpha_1g","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(4, numericInput("alpha_2g","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)), 
+                     column(4, numericInput("alpha_3g","$$\\alpha_3$$", value = 0, min=0, max = 1, step = 0.1)),
+                   ),
+                   p("$$\\alpha_4 = 1 - (\\alpha_1 + \\alpha_2 + \\alpha_3)$$")
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'General' && input.tamano == 'm=3'",
+                   fluidRow(
+                     column(4, numericInput("lambda_11_3","$$\\lambda_1$$", value = 1, min=1, step = 0.01)),
+                     column(4, numericInput("lambda_12_3","$$\\lambda_{12}$$", value = 0, min=0, step = 0.01)),
+                     column(4, numericInput("lambda_13_3","$$\\lambda_{13}$$", value = 0, min=0, step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(4, numericInput("lambda_21_3","$$\\lambda_{21}$$", value = 0, min=0, step = 0.01)),
+                     column(4, numericInput("lambda_22_3","$$\\lambda_2$$", value = 1, min=1, step = 0.01)),
+                     column(4, numericInput("lambda_23_3","$$\\lambda_{23}$$", value = 0, min=0, step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(4,numericInput("lambda_31_3","$$\\lambda_{31}$$", value = 0, min=0, step = 0.01) ),
+                     column(4, numericInput("lambda_32_3","$$\\lambda_{32}$$", value = 0, min=0, step = 0.01) ),
+                     column(4, numericInput("lambda_33_3","$$\\lambda_3$$", value = 1, min=1, step = 0.01) ),
+                   ),
+                   
+                   fluidRow(
+                     column(3, numericInput("alpha_1g_3","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(3, numericInput("alpha_2g_3","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(3, p("$$\\alpha_3 = 1 - (\\alpha_1 + \\alpha_2)$$") )
+                   ),
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'General' && input.tamano == 'm=2'",
+                   fluidRow(
+                     column(3, numericInput("lambda_11_2","$$\\lambda_1$$", value = 1, min=1, step = 0.01),
+                            numericInput("lambda_21_2","$$\\lambda_{21}$$", value = 0, min=0, step = 0.01)),
+                     column(3, numericInput("lambda_12_2","$$\\lambda_{12}$$", value = 0, min=0, step = 0.01),
+                            numericInput("lambda_22_2","$$\\lambda_2$$", value = 1, min=1, step = 0.01)),
+                     column(4, br(), br(), br(), br(), strong("Transition Matrix"), br(), br(),
+                            tableOutput("general_2"))
+                   ),
+                  
+                   
+                   fluidRow(
+                     column(5,numericInput("alpha_1g_2","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1), ),
+                     column(5, p("$$\\alpha_2 = 1 - \\alpha_1 $$")),
+                   ),
+                   
+                   
+                 ),
+                 
+                 
+                 
+    ),
+    mainPanel(
+      h3(strong("Phase-type distribution")),
+      p(strong("Phase-type distribution (PHD)"),"is a generalization of the Exponential distribution. It measures the distribution
+      of time to a state of absoprtion, stopping time. In the context of Phase-type distributions, it is usual to start from the idea that it is
+      a continuous time Markov chain composed of \\(\\{ 1,2, ..., m\\} \\) transient states and one absorbing state
+      \\( m+1 \\)."),
+      h4(strong("Cumulative Distribution Function")),
+      p('$$F(t) = P\\{X \\leq t \\}= 1- \\boldsymbol{\\alpha} \\exp(\\mathbf{T}t) \\mathbf{e} \\equiv 1 - \\boldsymbol{\\alpha} 
+               \\left( \\sum_{n=0}^\\infty \\frac{t^n}{n!} \\mathbf{T}^n \\right ) \\mathbf{e}, \\ t \\geq 0, $$'),
+      p(" where \\( \\mathbf{e}\\) is a column vector of ones with appropriate order; \\(\\boldsymbol{\\alpha}\\) is a row sub-stochastic vector of order \\( m\\) where
+        all elements are non negative and \\( \\boldsymbol{\\alpha} \\mathbf{e} \\leq 1 \\) with \\(m\\) being a positive integer; and \\( \\mathbf{T}\\) is a matrix of order \\( m \\times m\\)
+        (also called sub-generator of order \\( m \\)) where all elements on the diagonal are 
+        negatives, outside the diagonal are non negative and all row sums are non positive. Note that \\(\\mathbf{T} \\) is inverted."),
+      p("The", strong("infinitesimal generator"),"of order \\(m\\) for a Phase-type distribution with representation \\( (\\boldsymbol{\\alpha}, \\mathbf{T})\\) is"),
+      p('$$\\mathbf{Q} = \\begin{pmatrix}
+      \\mathbf{T} & \\mathbf{T}^0 \\\\ 
+      \\mathbf{0} & 0 
+        \\end{pmatrix},$$'), 
+	p("where \\( \\mathbf{T}^0 = - \\mathbf{T} \\mathbf{e} \\) is a column vector of order \\(m\\) containing the output rates to the absorption state."),
+      fluidRow(
+        column(5,h4(strong("Density Function")),
+               p('$$f(t) = \\frac{dF(t)}{dt} = \\boldsymbol{\\alpha} \\exp(\\mathbf{T}t)\\mathbf{T}^0, \\ t\\geq 0$$'),
+               h4(strong("Survival Function")),
+               p('$$R(t) =  \\boldsymbol{\\alpha} \\exp(\\mathbf{T}t) \\mathbf{e}, \\ t\\geq 0$$'),),
+        column(5, h4(strong("Hazard Rate")),
+               p('$$h(t) = \\frac{f(t)}{R(t)} = \\frac{\\boldsymbol{\\alpha} \\exp(\\mathbf{T}t)\\mathbf{T}^0}{\\boldsymbol{\\alpha} \\exp(\\mathbf{T}t) \\mathbf{e}}, \\ t\\geq 0$$'),
+               h4(strong("Cumulative Hazard Rate")),
+               p('$$H(t) = - \\log (R(t)), \\ t\\geq 0$$'),),
+      ),
+      
+      h3(em(strong("Example", style = "color:red"))),
+      conditionalPanel(
+        condition = "input.tamano == 'm=1'",
+        h4(strong("Exponential Distribution")),
+        plotOutput("Exponential")),
+      conditionalPanel(
+        condition = "input.dist == 'Exponential' && input.tamano != 'm=1'"),
+      
+      conditionalPanel(
+        condition = "input.dist == 'Erlang' && input.tamano == 'm=4'",
+        h4("Erlang Distribution"),
+        plotOutput("Erlang")),
+      
+      conditionalPanel(
+        condition = "input.dist == 'Erlang' && input.tamano == 'm=2'",
+        h4(strong("Erlang Distribution")),
+        plotOutput("Erlang_2")),
+      conditionalPanel(
+        condition = "input.dist == 'Erlang' && input.tamano == 'm=3'",
+        h4(strong("Erlang Distribution")),
+        plotOutput("Erlang_3")),
+      conditionalPanel(
+        condition = "input.dist == 'Generalized Erlang' && input.tamano == 'm=4'",
+        h4(strong("Generalized Erlang Distribution")),
+        plotOutput('ErlangG')),
+      conditionalPanel(
+        condition = "input.dist == 'Generalized Erlang' && input.tamano == 'm=2'",
+        h4(strong("Generalized Erlang Distribution")),
+        plotOutput('ErlangG_2')),
+      conditionalPanel(
+        condition = "input.dist == 'Generalized Erlang' && input.tamano == 'm=3'",
+        h4(strong("Generalized Erlang Distribution")),
+        plotOutput('ErlangG_3')),
+      
+      conditionalPanel(
+        condition = "input.dist == 'Coxian' && input.tamano == 'm=4'",
+        h4(strong("Coxian Distribution")),
+        plotOutput("Coxian")),
+      conditionalPanel(
+        condition = "input.dist == 'Coxian' && input.tamano == 'm=2'",
+        h4(strong("Coxian Distribution")),
+        plotOutput("Coxiana_2")),
+      conditionalPanel(
+        condition = "input.dist == 'Coxian' && input.tamano == 'm=3'",
+        h4(strong("Coxian Distribution")),
+        plotOutput("Coxiana_3")),
+      
+      conditionalPanel(
+        condition = "input.dist == 'General' && input.tamano == 'm=4'",
+        h4(strong("General Distribution")),
+        
+        p(strong("Transition Matrix")),
+        tableOutput("general"),
+        plotOutput("General")
+      ),
+      
+      conditionalPanel(
+        condition = "input.dist == 'General' && input.tamano == 'm=3'",
+        h4(strong("General Distribution")),
+        p(strong("Transition Matrix")),
+        tableOutput("general_3"),
+        plotOutput("General_3")
+      ),
+      
+      conditionalPanel(
+        condition = "input.dist == 'General' && input.tamano == 'm=2'",
+        h4(strong("General Distribution")),
+        # p(strong("Transition Matrix")),
+        # tableOutput("general_2"),
+        plotOutput("General_2")
+      ),
+      
+    )
+  )
+),
 
+
+
+
+# Define server 
+server <- function(input, output) {
+  matrizT <- function(m, lambda){
+    matrizT <- matrix(nrow = m, ncol = m)
+    for(i in 1:m){
+      for(j in 1:m){
+        if(i==j){matrizT[i,j] <- -lambda}
+        else {matrizT[i,j] <- 0}
+        submatriz<- matrizT[c(2:m), c(1:m-1)]
+        for(k in 1:nrow(submatriz)){
+          for(s in 1:ncol(submatriz)){
+            if(k==s) submatriz[k,s] = lambda
+          }
+        }
+        matrizT[c(2:m), c(1:m-1)] <- submatriz
+        
+      }
+    }
+    return(matrizT)
+  }
+  
+  matrizT_Coxian<-function(lambdas, m){
+    matrizT<-matrix(nrow = m, ncol = m)
+    for(i in 1:m){
+      for(j in 1:m){
+        if(i==j){ matrizT[i,j] = - lambdas[i]}
+        else matrizT[i,j] = 0
+        submatriz<- matrizT[c(2:m), c(1:m-1)]
+        for(k in 1:nrow(submatriz)){
+          for(s in 1:ncol(submatriz)){
+            if(k==s) submatriz[k,s] = lambdas[k+1]
+          }
+        }
+        matrizT[c(2:m), c(1:m-1)] <- submatriz
+        
+      }
+    }
+    return(matrizT)
+  }
+
+  
+  output$hot <- renderTable({
+    m <- 2
+    lambda = as.numeric(input$lambda_e2)
+    
+    matriz<- matrix(c(-lambda, 0, lambda, -lambda), byrow = T, ncol = m, nrow = m)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot2_eg <- renderTable({
+    m <- 2
+    lambda = as.numeric(input$lambda_eg2)
+    
+    matriz<- matrix(c(-lambda, 0, lambda, -lambda), byrow = T, ncol = m, nrow = m)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$mCoxiana_2 <- renderTable({
+    m <- 2
+    lambda1 = as.numeric(input$lambda_1_2)
+    lambda2 = as.numeric(input$lambda_2_2)
+    
+    matriz<- matrix(c(-lambda1, 0, lambda2, -lambda2), byrow = T, ncol = m, nrow = m)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot3 <- renderTable({
+    m <- 3
+    lambda = as.numeric(input$lambda_e3)
+    
+    matriz <- matrizT(m, lambda)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot3_eg <- renderTable({
+    m <- 3
+    lambda = as.numeric(input$lambda_eg3)
+    
+    matriz <- matrizT(m, lambda)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$mCoxiana_3 <- renderTable({
+    m = 3
+    lambda1 = as.numeric(input$lambda_1_3)
+    lambda2 = as.numeric(input$lambda_2_3)
+    lambda3 = as.numeric(input$lambda_3_3)
+    lambda_c <- c(lambda1, lambda2, lambda3)
+    
+    matriz_c <- matrizT_Coxian(lambda_c, m)
+    print(matriz_c)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot4 <- renderTable({
+    m <- 4
+    lambda = as.numeric(input$lambda_e)
+    
+    matriz <- matrizT(m, lambda)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot_eg <- renderTable({
+    m=4
+    lambda = as.numeric(input$lambda_eg)
+    
+    matriz <- matrizT(m, lambda)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$mCoxiana <- renderTable({
+    m = 4
+    lambda1 = as.numeric(input$lambda_1)
+    lambda2 = as.numeric(input$lambda_2)
+    lambda3 = as.numeric(input$lambda_3)
+    lambda4 = as.numeric(input$lambda_4)
+    lambda_c <- c(lambda1, lambda2, lambda3, lambda4)
+    
+    matriz_c <- matrizT_Coxian(lambda_c, m)
+    print(matriz_c)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$general <- renderTable({
+    m <- 4
+    lambda1 = as.numeric(input$lambda_11)
+    lambda2 = as.numeric(input$lambda_22)
+    lambda3 = as.numeric(input$lambda_33)
+    lambda4 = as.numeric(input$lambda_44)
+    lambda12 = as.numeric(input$lambda_12)
+    lambda21 = as.numeric(input$lambda_21)
+    lambda31 = as.numeric(input$lambda_31)
+    lambda41 = as.numeric(input$lambda_41)
+    lambda13 = as.numeric(input$lambda_13)
+    lambda23 = as.numeric(input$lambda_23)
+    lambda32 = as.numeric(input$lambda_32)
+    lambda42 = as.numeric(input$lambda_42)
+    lambda14 = as.numeric(input$lambda_14)
+    lambda24 = as.numeric(input$lambda_24)
+    lambda34 = as.numeric(input$lambda_34)
+    lambda43 = as.numeric(input$lambda_43)
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda13, lambda14, lambda21, -lambda2, lambda23, lambda24, 
+                   lambda31, lambda32, -lambda3, lambda34, lambda41, lambda42, lambda43, -lambda4)
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    print(matriz_g)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$general_2 <- renderTable({
+    
+    m = 2
+    
+    lambda1 = as.numeric(input$lambda_11_2)
+    lambda12 = as.numeric(input$lambda_12_2)
+    
+    lambda21 = as.numeric(input$lambda_21_2)
+    lambda2 = as.numeric(input$lambda_22_2)
+    
+    
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda21, -lambda2)
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    print(matriz_g)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$general_3 <- renderTable({
+    
+    m = 3
+    
+    lambda1 = as.numeric(input$lambda_11_3)
+    lambda12 = as.numeric(input$lambda_12_3)
+    lambda13 = as.numeric(input$lambda_13_3)
+    lambda21 = as.numeric(input$lambda_21_3)
+    lambda2 = as.numeric(input$lambda_22_3)
+    lambda23 = as.numeric(input$lambda_23_3)
+    lambda31 = as.numeric(input$lambda_31_3)
+    lambda32 = as.numeric(input$lambda_32_3)
+    lambda3 = as.numeric(input$lambda_33_3)
+    
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda13, lambda21, -lambda2, lambda23, 
+                   lambda31, lambda32, -lambda3 )
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    print(matriz_g)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  fdensidad <- function(alpha, Tmatriz, t, m){
+    uno=rep(1,m)
+    fdens<- vector()
+    for(i in 1:length(t)){
+      fdens[i]<- alpha%*%expm(Tmatriz*t[i])%*%(-Tmatriz%*%uno)
+    }
+    return(fdens)
+  }
+  
+  fdistribucion<- function(alpha, Tmatriz, t, m){
+    uno=rep(1,m)
+    fdist <- vector()
+    for(i in 1:length(t)){
+      fdist[i] <- 1 - (alpha%*%expm(Tmatriz*t[i])%*%uno)
+    }
+    return(fdist)
+  }
+  
+  fsupervivencia <- function(alpha, Tmatriz, t, m){
+    uno=rep(1,m)
+    fsuper <- vector()
+    for(i in 1:length(t)){
+      fsuper[i] <- alpha%*%expm(Tmatriz*t[i])%*%uno
+    }
+    return(fsuper)
+  }
+  
+  output$Exponential <-renderPlot({
+    tamano <- as.numeric(input$malla)
+    t <- seq(0, tamano, 0.001); t <-sort(t)
+    lambda <- as.numeric(input$lambda)
+    alpha <- 1
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fden <- alpha * exp(-lambda* t)*(lambda*1)
+    plot(x = t, y = fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    
+    fdist<- 1-(alpha * exp(-lambda* t)*1)
+    #plot(x = t, y = fdist, type = 'l', main = "Distribution function", col = "#427fa5", 
+    #     lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    fsup<- (alpha * exp(-lambda* t)*1)
+    plot(x = t, y = fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    razon<- fden / fsup
+    plot(x = t, y = razon, type = 'l', main = "Hazard Rate", col = "#427fa5", 
+         lwd = 2,  ylab = "h(t)", xlab = "t")
+    
+    racum<- -log(fsup)
+    plot(x = t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col = "#427fa5", 
+         lwd = 2,  ylab = "H(t)", xlab = "t")
+    
+  })
+  
+  output$Erlang <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 4
+    alpha_e <-c(rep(0,m-1), 1)
+
+    lambda =  as.numeric(input$lambda_e)
+    
+    matriz <- matrizT(m, lambda)
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    # Funcion de densidad 
+    fden <- fdensidad(alpha_e, matriz, t, m)
+    
+    plot(x= t, y =fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <-  fdistribucion(alpha_e, matriz, t, m)
+    # 
+    # plot(x= t, y =fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    #Función de supervivencia
+    
+    fsup <- fsupervivencia(alpha_e, matriz, t, m)
+    plot(x= t, y =fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    # Razón de Fallo Acumulada
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+  })
+  
+  output$Erlang_2 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 2
+    alpha_e <-c(rep(0,m-1), 1)
+    
+    
+    lambda = as.numeric(input$lambda_e2)
+    
+    matriz<- matrix(c(-lambda, 0, lambda, -lambda), byrow = T, ncol = m, nrow = m)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    # Funcion de densidad 
+    fden <- fdensidad(alpha_e, matriz, t, m)
+    
+    plot(x= t, y =fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <-  fdistribucion(alpha_e, matriz, t, m)
+    # 
+    # plot(x= t, y =fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    #Función de supervivencia
+    
+    fsup <- fsupervivencia(alpha_e, matriz, t, m)
+    plot(x= t, y =fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    # Razón de Fallo Acumulada
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+  })
+  
+  output$Erlang_3 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 3
+    alpha_e <-c(rep(0,m-1), 1)
+    
+    lambda =  as.numeric(input$lambda_e3)
+    
+    matriz <- matrizT(m, lambda)
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    # Funcion de densidad 
+    fden <- fdensidad(alpha_e, matriz, t, m)
+    
+    plot(x= t, y =fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <-  fdistribucion(alpha_e, matriz, t, m)
+    # 
+    # plot(x= t, y =fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    #Función de supervivencia
+    
+    fsup <- fsupervivencia(alpha_e, matriz, t, m)
+    plot(x= t, y =fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+  })
+  
+  output$ErlangG <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 4
+    
+    lambda =  as.numeric(input$lambda_eg)
+    
+    alpha1 = as.numeric(input$alpha_1)
+    alpha2 = as.numeric(input$alpha_2)
+    alpha3 = as.numeric(input$alpha_3)
+    alpha4 = 1- (alpha1+alpha2+alpha3)
+    
+    alphas_eg <- c(alpha1, alpha2, alpha3, alpha4)
+    
+    
+    
+    matriz <- matrizT(m, lambda)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    
+    fden <- fdensidad(alphas_eg, matriz, t, m)
+    
+    plot(x= t, y =fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <- fdistribucion(alphas_eg, matriz, t, m)
+    # 
+    # plot(x= t, y =fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    
+    fsup <-fsupervivencia(alphas_eg, matriz, t, m)
+    
+    plot(x= t, y =fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+    
+  })
+  
+  output$ErlangG_2 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 2
+    
+    lambda =  as.numeric(input$lambda_eg2)
+    
+    alpha1 = as.numeric(input$alpha_1_2)
+    alpha2 = 1- (alpha1)
+    
+    alphas_eg <- c(alpha1, alpha2)
+    
+    
+    
+    matriz<- matrix(c(-lambda, 0, lambda, -lambda), byrow = T, ncol = m, nrow = m)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    
+    fden <- fdensidad(alphas_eg, matriz, t, m)
+    
+    plot(x= t, y =fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <- fdistribucion(alphas_eg, matriz, t, m)
+    # 
+    # plot(x= t, y =fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    
+    fsup <-fsupervivencia(alphas_eg, matriz, t, m)
+    
+    plot(x= t, y =fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+    
+  })
+  
+  output$ErlangG_3 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 3
+    
+    lambda =  as.numeric(input$lambda_eg3)
+    
+    alpha1 = as.numeric(input$alpha_1_3)
+    alpha2 = as.numeric(input$alpha_2_3)
+    alpha3 = 1- (alpha1+alpha2)
+    
+    alphas_eg <- c(alpha1, alpha2, alpha3)
+    
+    matriz <- matrizT(m, lambda)
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    
+    fden <- fdensidad(alphas_eg, matriz, t, m)
+    
+    plot(x= t, y =fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <- fdistribucion(alphas_eg, matriz, t, m)
+    # 
+    # plot(x= t, y =fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    
+    fsup <-fsupervivencia(alphas_eg, matriz, t, m)
+    
+    plot(x= t, y =fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+    
+  })
+  
+  output$Coxiana<- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 4
+    
+    lambda1 = as.numeric(input$lambda_1)
+    lambda2 = as.numeric(input$lambda_2)
+    lambda3 = as.numeric(input$lambda_3)
+    lambda4 = as.numeric(input$lambda_4)
+    lambda_c <- c(lambda1, lambda2, lambda3, lambda4)
+    
+    lambda = lambda_c
+    
+    alpha1_c = as.numeric(input$alpha_1c)
+    alpha2_c = as.numeric(input$alpha_2c)
+    alpha3_c = as.numeric(input$alpha_3c)
+    alpha4_c = 1- (alpha1_c+alpha2_c+alpha3_c)
+    
+    alphas_c <- c(alpha1_c, alpha2_c, alpha3_c, alpha4_c)
+    
+    
+    matriz <- matrizT_Coxian(lambda, m)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    
+    fden <- fdensidad(alphas_c, matriz, t, m)
+    
+    plot(x= t, y =fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <-fdistribucion(alphas_c, matriz, t, m)
+    # 
+    # plot(x= t, y =fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    
+    fsup <- fsupervivencia(alphas_c, matriz, t, m)
+    
+    plot(x= t, y =fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+    
+    
+  })
+  
+  output$Coxiana_2<- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 2
+    
+    lambda1 = as.numeric(input$lambda_1_2)
+    lambda2 = as.numeric(input$lambda_2_2)
+    lambda_c <- c(lambda1, lambda2)
+    
+    lambda = lambda_c
+    
+    alpha1_c = as.numeric(input$alpha_1c_2)
+    alpha2_c = 1- (alpha1_c)
+    
+    alphas_c <- c(alpha1_c, alpha2_c)
+    
+    
+    matriz<- matrix(c(-lambda1, 0, lambda2, -lambda2), byrow = T, ncol = m, nrow = m)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    
+    fden <- fdensidad(alphas_c, matriz, t, m)
+    
+    plot(x= t, y =fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <-fdistribucion(alphas_c, matriz, t, m)
+    # 
+    # plot(x= t, y =fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    
+    fsup <- fsupervivencia(alphas_c, matriz, t, m)
+    
+    plot(x= t, y =fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+    
+    
+  })
+  
+  output$Coxiana_3<- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 3
+    
+    lambda1 = as.numeric(input$lambda_1_3)
+    lambda2 = as.numeric(input$lambda_2_3)
+    lambda3 = as.numeric(input$lambda_3_3)
+    lambda_c <- c(lambda1, lambda2, lambda3)
+    
+    lambda = lambda_c
+    
+    alpha1_c = as.numeric(input$alpha_1c_3)
+    alpha2_c = as.numeric(input$alpha_2c_3)
+    alpha3_c = 1- (alpha1_c+alpha2_c)
+    
+    alphas_c <- c(alpha1_c, alpha2_c, alpha3_c)
+    
+    
+    matriz <- matrizT_Coxian(lambda, m)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    
+    fden <- fdensidad(alphas_c, matriz, t, m)
+    
+    plot(x= t, y =fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <-fdistribucion(alphas_c, matriz, t, m)
+    # 
+    # plot(x= t, y =fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    
+    fsup <- fsupervivencia(alphas_c, matriz, t, m)
+    
+    plot(x= t, y =fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+    
+    
+  })
+  
+  output$General <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 4
+    
+    lambda1 = as.numeric(input$lambda_11)
+    lambda2 = as.numeric(input$lambda_22)
+    lambda3 = as.numeric(input$lambda_33)
+    lambda4 = as.numeric(input$lambda_44)
+    lambda12 = as.numeric(input$lambda_12)
+    lambda21 = as.numeric(input$lambda_21)
+    lambda31 = as.numeric(input$lambda_31)
+    lambda41 = as.numeric(input$lambda_41)
+    lambda13 = as.numeric(input$lambda_13)
+    lambda23 = as.numeric(input$lambda_23)
+    lambda32 = as.numeric(input$lambda_32)
+    lambda42 = as.numeric(input$lambda_42)
+    lambda14 = as.numeric(input$lambda_14)
+    lambda24 = as.numeric(input$lambda_24)
+    lambda34 = as.numeric(input$lambda_34)
+    lambda43 = as.numeric(input$lambda_43)
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda13, lambda14, lambda21, -lambda2, lambda23, lambda24, 
+                   lambda31, lambda32, -lambda3, lambda34, lambda41, lambda42, lambda43, -lambda4)
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    
+    
+    
+
+    alpha1_g = as.numeric(input$alpha_1g)
+    alpha2_g = as.numeric(input$alpha_2g)
+    alpha3_g = as.numeric(input$alpha_3g)
+    alpha4_g = 1- (alpha1_g+alpha2_g+alpha3_g)
+    
+    alphas_g <- c(alpha1_g, alpha2_g, alpha3_g, alpha4_g)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    fden <- fdensidad(alphas_g, matriz_g, t, m)
+    
+    plot(x= t, y = fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <- fdistribucion(alphas_g, matriz_g, t, m)
+    # 
+    # plot(x= t, y = fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    
+    fsup <- fsupervivencia(alphas_g, matriz_g, t, m)
+    
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+    
+    
+  })
+  
+  output$General_2 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 2
+    
+    lambda1 = as.numeric(input$lambda_11_2)
+    lambda2 = as.numeric(input$lambda_22_2)
+    
+    lambda12 = as.numeric(input$lambda_12_2)
+    lambda21 = as.numeric(input$lambda_21_2)
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda21, -lambda2)
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    
+    
+    alpha1_g = as.numeric(input$alpha_1g_2)
+    alpha2_g = 1- (alpha1_g)
+    
+    alphas_g <- c(alpha1_g, alpha2_g)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    fden <- fdensidad(alphas_g, matriz_g, t, m)
+    
+    plot(x= t, y = fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    #Función de distribución
+    
+    # fdist <- fdistribucion(alphas_g, matriz_g, t, m)
+    # 
+    # plot(x= t, y = fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    
+    fsup <- fsupervivencia(alphas_g, matriz_g, t, m)
+    
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+  })
+  
+  output$General_3 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 3
+    
+    lambda1 = as.numeric(input$lambda_11_3)
+    lambda2 = as.numeric(input$lambda_22_3)
+    lambda3 = as.numeric(input$lambda_33_3)
+    
+    lambda12 = as.numeric(input$lambda_12_3)
+    lambda21 = as.numeric(input$lambda_21_3)
+    lambda31 = as.numeric(input$lambda_31_3)
+    
+    lambda13 = as.numeric(input$lambda_13_3)
+    lambda23 = as.numeric(input$lambda_23_3)
+    lambda32 = as.numeric(input$lambda_32_3)
+    
+    
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda13, lambda21, -lambda2, lambda23, 
+                   lambda31, lambda32, -lambda3)
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    
+    
+    alpha1_g = as.numeric(input$alpha_1g_3)
+    alpha2_g = as.numeric(input$alpha_2g_3)
+    alpha3_g = 1- (alpha1_g+alpha2_g)
+    
+    alphas_g <- c(alpha1_g, alpha2_g, alpha3_g)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    fden <- fdensidad(alphas_g, matriz_g, t, m)
+    
+    plot(x= t, y = fden, type = 'l', main = "Density Function", col = "#427fa5", 
+         lwd = 2,  ylab = "f(t)", xlab = "t")
+    
+    #Función de distribución
+    
+    # fdist <- fdistribucion(alphas_g, matriz_g, t, m)
+    # 
+    # plot(x= t, y = fdist, type = 'l', main = "Función de Distribución", col = "#427fa5", 
+    #      lwd = 2,  ylab = "F(t)", xlab = "t")
+    
+    
+    fsup <- fsupervivencia(alphas_g, matriz_g, t, m)
+    
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col = "#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t")
+    
+    # Razón de Fallo 
+    rfallo <- fden / fsup
+    plot(x= t, y = rfallo, main = "Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "h(t)", col = "#427fa5", lwd = 2)
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, main = "Cumulative Hazard Rate", type = 'l', 
+         xlab = "t", ylab = "H(t)", col = "#427fa5", lwd = 2)
+    
+  })
+  
+  
+}
+)
 ```
 
-Column {data-width=350}
------------------------------------------------------------------------
 
-### Chart B
+Estimation
+=======================================================================
 
 ```{r}
+shinyApp(
+  ui <- fluidPage(
+    tags$div(HTML("<script type='text/x-mathjax-config' >
+                MathJax.Hub.Config({
+                showProcessingMessages: true,
+                jax: ['input/TeX', 'output/PreviewHTML'],
+                });
+                </script >
+                ")),
+  # App title ----
+  useShinyjs(),
+  withMathJax(uiOutput("entered", inline = TRUE)),
+  theme = shinytheme("cerulean"),
+  title = "Estimation by using Phase-type distributions (PHD)",
+  fluidRow(
+    wellPanel(style="background-color:#427fa5", width = "100%", height = "5%",
+              h1("Estimation by using Phase-type distributions (PHD)", style = "text-align:center;font-weight:bold;color:white;")
+    )
+  ), 
+  sidebarLayout(
+    sidebarPanel("", 
+                 
+                 
+                 selectInput("mest","Estimation Methods:", choices =
+                               list("Point Data", "Pooled Data",  "Density Function")),
+                 p("The dataset must be recorded in .txt or .csv format with header. Values must be registered 
+			in a single column, without an id variable."),
+                 
+                
+                 conditionalPanel(
+                   condition = "input.mest == 'Pooled Data'",
+                   p("In this case, we grouped the data using the function", em("hist"), ".")
+                 ),
+                 
+ 
+                 selectInput("database", "File type:", choices = list("txt", "csv")),
+                 
+                 tabPanel("Load File", 
+                          fileInput("GetFile", "Load File"), 
+                          p(strong("Data visualization")),
+                          tableOutput("text1")),
+                 
+                 numericInput("slider1", strong("Number of states"),
+                              min = 2, value = 2, step = 1),
+                 
+                 
+                 
+                 # conditionalPanel(
+                 #   condition = "input.mest == 'Método de los momentos'",
+                 #   p(strong("Resultados estimación mediante el método de los momentos:")),
+                 #   verbatimTextOutput("MomentR")
+                 # ),
+                 # conditionalPanel(
+                 #   condition = "input.mest == 'Datos Puntuales'",
+                 #   p(strong("")),
+                 #   verbatimTextOutput("PointR")
+                 # ),
+                 
+                 # conditionalPanel(
+                 #   condition = "input.mest == 'Datos Agrupados'",
+                 #   p(strong("Resultados estimación mediante datos agrupados:")),
+                 #   verbatimTextOutput("GroupR")
+                 # ),
+                 # 
+                 # conditionalPanel(
+                 #   condition = "input.mest == 'Función de densidad'",
+                 #   p(strong("Resultados estimación mediante la función de densidad:")),
+                 #   verbatimTextOutput("DensityR")
+                 # ),
+                
+                 
+                 ),
+    mainPanel(
+      h1(strong("Estimation by using Phase-type distributions (PHD)"),style = "color:steelblue"),
+      p("This module aims to model a dataset by making use of Phase-type distributions. Different methods of estimation are available for the user: density 
+      function, point data or pooled data (see the documentation of package 'mapfit' from R-cran for more information). Besides, the number of states must 
+      be added beforehand. The quality of the fit can be checked both via Anderson Darling test (AD-test) and graphically. Finally, multiple representations will be 
+      taken into account: Canonical Function (CF1) and Hyper Erlang Distribution (HErlang), in addition to the General Phase Type Distribution (PH)."),
+      
+      conditionalPanel(
+        condition = "input.mest == 'Point Data'",
+        h3(em("Estimation by using point data method")),
+        plotOutput("Point"),
+        fluidRow(
+          column(5,h3("Mean and Variance"),tableOutput("PointR_mean")),
+          column(5, h3("Goodness-of-Fit Test"),
+                 tableOutput("PointR_test")),
+        ),
+        h4("Estimation of the parameters:"),
+        fluidRow(
+          column(4, strong("PH"), verbatimTextOutput("PointR")), 
+          column(4, strong("CF1"), verbatimTextOutput("PointR_CF1")), 
+          column(4, strong("HErlang"), verbatimTextOutput("PointR_HErlang"))
+        ),
 
+        
+      ),
+      conditionalPanel(
+        condition = "input.mest == 'Pooled Data'",
+        h3(em("Estimation by using pooled data method")),
+        plotOutput("Group"),
+        fluidRow(
+          column(5, h3("Mean and Variance"),tableOutput("GroupR_mean")),
+          column(5, h3("Goodness-of-Fit Test"),
+                 tableOutput("GroupR_test")), 
+        ),
+        
+        h4("Estimation of the parameters:"),
+        fluidRow(
+          column(4, strong("PH"), verbatimTextOutput("GroupR")), 
+          column(4, strong("CF1"), verbatimTextOutput("GroupR_CF1")), 
+          column(4, strong("HErlang"), verbatimTextOutput("GroupR_HErlang"))
+        ),
+        
+        
+      ),
+      # conditionalPanel(
+      #   condition = "input.mest == 'Método de los momentos'",
+      #   h3(em("Estimación mediante del Método de los momentos")),
+      #   p("Este método utiliza los 3 primeros momentos, en este caso estamos hablando de momentos no centrados."),
+      #   plotOutput("Moment"),
+      #   verbatimTextOutput("MomentR_mean"),
+      #   h3("Tests de Bondad de Ajuste"),
+      #   verbatimTextOutput("MomentR_test")
+      # ),
+      conditionalPanel(
+        condition = "input.mest == 'Density function'",
+        h3(em("Estimation by using density function method")),
+        plotOutput("Density"),
+        fluidRow(
+          column(5,h3("Mean and Variance"),tableOutput("DensityR_mean") ),
+          column(5, h3("Goodness-of-Fit Test"),
+                 tableOutput("DensityR_test")),
+        ),
+        h4("Estimation of the parameters:"),
+        fluidRow(
+          column(4, strong("PH"), verbatimTextOutput("DensityR")), 
+          column(4, strong("CF1"), verbatimTextOutput("DensityR_CF1")), 
+          column(4, strong("HErlang"), verbatimTextOutput("DensityR_HErlang"))
+        ),
+        
+        
+      ),
+
+      
+      
+    ),
+
+  )
+),
+
+
+
+
+# Define server 
+server <- function(input, output) {
+
+  output$Group <- renderPlot({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+      'csv' = read.csv(infile$datapath, header = T),
+      'txt' = read.table(infile$datapath, header = T)
+    )
+    
+    datafile[,1] <- sort(datafile[,1])
+    
+    wgroup <- hist(x=datafile[,1], breaks="fd", plot=FALSE)
+    nestados <- as.numeric(input$slider1)
+    group_fit <- phfit.group(ph=ph(nestados), counts=wgroup$counts,
+                             breaks=wgroup$breaks)
+    group_fit_cf1 <- phfit.group(ph=cf1(nestados), counts=wgroup$counts,
+                             breaks=wgroup$breaks)
+    group_fit_herlang <- phfit.group(ph=herlang(nestados), counts=wgroup$counts,
+                             breaks=wgroup$breaks)
+    m_group <- group_fit$model
+    m_group_cf1 <- group_fit_cf1$model
+    m_group_herlang <- as(group_fit_herlang$model, "ph")
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    densidad <- dph(datafile[,1], m_group)
+    densidad_cf1 <- dph(datafile[,1], m_group_cf1)
+    densidad_herlang <- dph(datafile[,1], m_group_herlang)
+    
+    plot(x =density(datafile[,1], from = min(datafile[,1]), to = max(datafile[,1])), lwd = 1, type = 'p',
+         col = "grey", main = "Density Function", xlab = "Datos", ylab = "f(t)", pch = 1,
+         ylim = c(min(c(densidad, densidad_cf1, densidad_herlang, density(datafile[,1], from = min(datafile[,1]), to = max(datafile[,1]))$y)), 
+                  max(c(densidad, densidad_cf1, densidad_herlang, density(datafile[,1], from = min(datafile[,1]), to = max(datafile[,1]))$y))))
+    lines(x = datafile[,1], y = densidad, lwd = 3, type = "l", col = "cyan")
+    lines(x = datafile[,1], y = densidad_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = densidad_herlang, lwd = 2, type = "l",lty = 3, col = "darkgreen")
+    legend("topright", legend = c("PH","CF1","HErlang", "Empírica"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"),
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+    distribucion <- pph(datafile[,1], m_group)
+    distribucion_cf1 <- pph(datafile[,1], m_group_cf1)
+    distribucion_herlang <- pph(datafile[,1], m_group_herlang)
+    # plot(x = datafile[,1], y =distribucion, lwd = 2, type = 'l', col = "cyan", main = "Función de distribución", xlab = "Datos", ylab = "F(t)")
+    pi <- (1:length(datafile[,1])-0.5)/ length(datafile[,1])
+    # lines(x = datafile[,1], y = pi, col = "red", lwd = 2, lty = 2, type = "l")
+    # legend("topleft", legend = c("Estimación PH", "Empírica"), lwd = 2, col = c("cyan", "red"), lty = c(1,2), cex = 1)
+    
+    supervivencia <- 1 - distribucion 
+    supervivencia_cf1 <- 1 - distribucion_cf1 
+    supervivencia_herlang <- 1 - distribucion_herlang
+    plot(x = datafile[,1], y = 1 - pi, lwd = 1, type = "p", col ="grey", main = "Función de Supervivencia", xlab = "Datos", ylab = "R(t)",
+         ylim = c(min(c(supervivencia, supervivencia_cf1, supervivencia_herlang,  1 - pi)), 
+                  max(c(supervivencia, supervivencia_cf1, supervivencia_herlang,  1 - pi))))
+    lines(x = datafile[,1], y = supervivencia, lwd = 3, type = "l",lty = 1, col = "cyan")
+    lines(x = datafile[,1], y = supervivencia_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = supervivencia_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    legend("topright", legend = c("PH","CF1","HErlang", "Empírica"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"), 
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+    razonfallo <- densidad /supervivencia
+    razonfallo_cf1 <- densidad_cf1 /supervivencia_cf1
+    razonfallo_herlang <- densidad_herlang /supervivencia_herlang
+    plot(x = muhaz(datafile[,1], min.time = min(datafile[,1])), lwd = 1, type = "p", col = "grey", main = "Razón de Fallo", xlab = "Datos", ylab = "h(t)",
+         ylim = c(min(c(razonfallo, razonfallo_cf1, razonfallo_herlang, muhaz(datafile[,1], min.time = min(datafile[,1]))$haz.est)), 
+                  max(c(razonfallo, razonfallo_cf1, razonfallo_herlang, muhaz(datafile[,1], min.time = min(datafile[,1]))$haz.est))))
+    lines(x = datafile[,1], y = razonfallo, lwd = 3, type = "l",lty = 1, col = "cyan")
+    lines(x = datafile[,1], y = razonfallo_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = razonfallo_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    legend("bottomright", legend = c("PH","CF1","HErlang", "Empírica"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"), 
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+    razonfalloacumulada <- -log(supervivencia)
+    razonfalloacumulada_cf1 <- -log(supervivencia_cf1)
+    razonfalloacumulada_herlang <- -log(supervivencia_herlang)
+    plot(x = datafile[,1], y = -log(1-pi), lwd = 2, type = "p", col = "grey", main = "Razón de Fallo acumulada", xlab = "Datos", ylab = "H(t)",
+         ylim = c(min(c(razonfalloacumulada, razonfalloacumulada_cf1, razonfalloacumulada_herlang, -log(1-pi))), 
+                  max(c(razonfalloacumulada, razonfalloacumulada_cf1, razonfalloacumulada_herlang, -log(1-pi)))))
+    lines(x = datafile[,1], y = razonfalloacumulada, lwd = 3, type = "l",lty = 1, col = "cyan")
+    lines(x = datafile[,1], y = razonfalloacumulada_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = razonfalloacumulada_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    legend("bottomright", legend = c("PH","CF1","HErlang", "Empírica"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"), 
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+  })
+  
+  output$GroupR <- renderPrint({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    wgroup <- hist(x=datafile[,1], breaks="fd", plot=FALSE)
+    nestados <- as.numeric(input$slider1)
+    group_fit <- phfit.group(ph=ph(nestados), counts=wgroup$counts,
+                             breaks=wgroup$breaks)
+
+    print(group_fit)
+
+  })
+  
+  output$GroupR_CF1 <- renderPrint({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    wgroup <- hist(x=datafile[,1], breaks="fd", plot=FALSE)
+    nestados <- as.numeric(input$slider1)
+
+    group_fit_cf1 <- phfit.group(ph=cf1(nestados), counts=wgroup$counts,
+                                 breaks=wgroup$breaks)
+    print(group_fit_cf1)
+    
+  })
+  
+  output$GroupR_HErlang <- renderPrint({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    wgroup <- hist(x=datafile[,1], breaks="fd", plot=FALSE)
+    nestados <- as.numeric(input$slider1)
+ 
+    group_fit_herlang <- phfit.group(ph=herlang(nestados), counts=wgroup$counts,
+                                     breaks=wgroup$breaks)
+
+    print(group_fit_herlang)
+    
+  })
+  
+  output$GroupR_test <- renderTable({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    wgroup <- hist(x=datafile[,1], breaks="fd", plot=FALSE)
+    nestados <- as.numeric(input$slider1)
+    
+    pi <- (1:length(datafile[,1])-0.5)/ length(datafile[,1])
+   
+    group_fit <- phfit.group(ph=ph(nestados), counts=wgroup$counts,
+                             breaks=wgroup$breaks)
+    group_fit_cf1 <- phfit.group(ph=cf1(nestados), counts=wgroup$counts,
+                                 breaks=wgroup$breaks)
+    group_fit_herlang <- phfit.group(ph=herlang(nestados), counts=wgroup$counts,
+                                     breaks=wgroup$breaks)
+    m_group <- group_fit$model
+    m_group_cf1 <- group_fit_cf1$model
+    m_group_herlang <- as(group_fit_herlang$model, "ph")
+    
+    distribucion <- pph(datafile[,1], m_group)
+    distribucion_cf1 <- pph(datafile[,1], m_group_cf1)
+    distribucion_herlang <- pph(datafile[,1], m_group_herlang)
+    
+    pvalor_ks <- c(ks.test(datafile[,1], distribucion)$p.value, 
+                ks.test(datafile[,1], distribucion_cf1)$p.value, 
+                ks.test(datafile[,1], distribucion_herlang)$p.value)
+    pvalor_ad <- c(ad.test(distribucion)$p.value, 
+                   ad.test(distribucion_cf1)$p.value, 
+                   ad.test(distribucion_herlang)$p.value)
+    matriz <- matrix(c(pvalor_ad), byrow = F, ncol = 1)
+    colnames(matriz) <- c( "AD-test")
+    rownames(matriz) <- c("PH", "CF1", "HErlang")
+    print(matriz)
+    
+  }, rownames = T, digits = 4)
+  
+  output$GroupR_mean <- renderTable({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    wgroup <- hist(x=datafile[,1], breaks="fd", plot=FALSE)
+    nestados <- as.numeric(input$slider1)
+    
+    group_fit <- phfit.group(ph=ph(nestados), counts=wgroup$counts,
+                             breaks=wgroup$breaks)
+    group_fit_cf1 <- phfit.group(ph=cf1(nestados), counts=wgroup$counts,
+                                 breaks=wgroup$breaks)
+    group_fit_herlang <- phfit.group(ph=herlang(nestados), counts=wgroup$counts,
+                                     breaks=wgroup$breaks)
+    m_group <- group_fit$model
+    m_group_cf1 <- group_fit_cf1$model
+    m_group_herlang <- as(group_fit_herlang$model, "ph")
+    
+    densidad <- pph(datafile[,1], m_group)
+    densidad_cf1 <- pph(datafile[,1], m_group_cf1)
+    densidad_herlang <- pph(datafile[,1], m_group_herlang)
+    
+    pi <- (1:length(datafile[,1])-0.5)/ length(datafile[,1])
+    mean_emp=mean(pi)
+    var_emp=var(pi)*(length(pi)-1)/length(pi)
+    
+    mean_PH <- mean(densidad)
+    mean_cf1 <- mean(densidad_cf1)
+    mean_herlang <- mean(densidad_herlang)
+    
+    var_PH <- var(densidad)
+    var_cf1 <- var(densidad_cf1)
+    var_herlang <- var(densidad_herlang)
+    
+    matriz <- matrix(c(mean_PH, mean_cf1, mean_herlang, mean_emp, var_PH, var_cf1, var_herlang, var_emp), byrow = F, ncol =2)
+    colnames(matriz) <- c("Mean", "Variance")
+    rownames(matriz) <- c("PH", "CF1", "HErlang", "Empírica")
+    print(matriz)
+    
+  }, rownames = T, digits = 4)
+  
+  output$Density <- renderPlot({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+
+    density <- phfit.density(ph=ph(nestados), f = dnorm, mean = 0, sd = 1)
+    density_cf1 <- phfit.density(ph=cf1(nestados), f = dnorm, mean = 0, sd = 1)
+    density_herlang <- phfit.density(ph=herlang(nestados), f = dnorm, mean = 0, sd = 1)
+    m_density <- density$model
+    m_density_cf1 <- density_cf1$model
+    m_density_herlang <- as(density_herlang$model, "ph")
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    densidad <- dph(datafile[,1], m_density)
+    densidad_cf1 <- dph(datafile[,1], m_density_cf1)
+    densidad_herlang <- dph(datafile[,1], m_density_herlang)
+    plot(x = density(datafile[,1], from = min(datafile[,1]), to = max(datafile[,1])), lwd = 1, type = 'p', col = "grey", main = "Density Function", xlab = "Datos", ylab = "f(t)",
+         ylim = c(min(c(densidad, densidad_cf1, densidad_herlang,density(datafile[,1], from = min(datafile[,1]), to = max(datafile[,1]))$y)), 
+                  max(c(densidad, densidad_cf1, densidad_herlang,density(datafile[,1], from = min(datafile[,1]), to = max(datafile[,1]))$y))))
+    lines(x = datafile[,1], y = densidad, lwd =3, type = "l",lty = 1, col = "cyan")
+    lines(x = datafile[,1], y = densidad_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = densidad_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    legend("topright", legend = c("PH","CF1","HErlang", "Experimental"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"),
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+    distribucion <- pph(datafile[,1], m_density)
+    distribucion_cf1 <- pph(datafile[,1], m_density_cf1)
+    distribucion_herlang <- pph(datafile[,1], m_density_herlang)
+    # plot(x = datafile[,1], y =distribucion, lwd = 2, type = 'l', col = "cyan", main = "Cumulative Distribution Function", xlab = "Datos", ylab = "F(t)")
+    pi <- (1:length(datafile[,1])-0.5)/ length(datafile[,1])
+    # lines(x = datafile[,1], y = pi, col = "red", lwd = 2, lty = 2, type = "l")
+    # legend("topleft", legend = c("Estimación PH", "Experimental"), lwd = 2, col = c("cyan", "red"), lty = c(1,2), cex = 1)
+    
+    supervivencia <- 1 - distribucion 
+    supervivencia_cf1 <- 1 - distribucion_cf1
+    supervivencia_herlang <- 1 - distribucion_herlang 
+    plot(x = datafile[,1], y =1-pi, lwd = 1, type = "p", col ="grey", main = "Survival Function", xlab = "Datos", ylab = "R(t)",
+         ylim = c(min(c(supervivencia, supervivencia_cf1, supervivencia_herlang,  1 - pi)), 
+                  max(c(supervivencia, supervivencia_cf1, supervivencia_herlang,  1 - pi))))
+    lines(x = datafile[,1], y = supervivencia, lwd = 3, type = "l",lty = 1, col = "cyan")
+    lines(x = datafile[,1], y = supervivencia_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = supervivencia_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    legend("topright", legend = c("PH","CF1","HErlang", "Experimental"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"),
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+    razonfallo <- densidad /supervivencia
+    razonfallo_cf1 <- densidad_cf1 /supervivencia_cf1
+    razonfallo_herlang <- densidad_herlang /supervivencia_herlang
+    plot(x = muhaz(datafile[,1], min.time = min(datafile[,1])), lwd = 1, type = "p", col = "grey", main = "Hazard Rate", xlab = "Datos", ylab = "h(t)",
+         ylim = c(min(c(razonfallo, razonfallo_cf1, razonfallo_herlang, muhaz(datafile[,1], min.time = min(datafile[,1]))$haz.est)), 
+                  max(c(razonfallo, razonfallo_cf1, razonfallo_herlang, muhaz(datafile[,1], min.time = min(datafile[,1]))$haz.est))))
+    lines(x = datafile[,1], y = razonfallo, lwd = 3, type = "l",lty = 1, col = "cyan")
+    lines(x = datafile[,1], y = razonfallo_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = razonfallo_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    legend("bottomright", legend = c("PH","CF1","HErlang", "Experimental"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"),
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+    razonfalloacumulada <- -log(supervivencia)
+    razonfalloacumulada_cf1 <- -log(supervivencia_cf1)
+    razonfalloacumulada_herlang <- -log(supervivencia_herlang)
+    plot(x = datafile[,1], y =-log(1-pi), lwd = 1, type = "p", col = "grey", main = "Cumulative Hazard Rate", xlab = "Datos", ylab = "H(t)",
+         ylim = c(min(c(razonfalloacumulada, razonfalloacumulada_cf1, razonfalloacumulada_herlang, -log(1-pi))), 
+                  max(c(razonfalloacumulada, razonfalloacumulada_cf1, razonfalloacumulada_herlang, -log(1-pi)))))
+    lines(x = datafile[,1], y = razonfalloacumulada, lwd = 3, type = "l",lty = 1, col = "cyan")
+    lines(x = datafile[,1], y = razonfalloacumulada_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = razonfalloacumulada_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    legend("bottomright", legend = c("PH","CF1","HErlang", "Experimental"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"),
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+  })
+  
+  output$DensityR <- renderPrint({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+    density <- phfit.density(ph = ph(nestados), f = dnorm, mean = 0, sd = 1)
+    print(density)
+  })
+  
+  output$DensityR_CF1 <- renderPrint({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+    density_cf1 <- phfit.density(ph=cf1(nestados), f = dnorm, mean = 0, sd = 1)
+    print(density_cf1)
+
+  })
+  
+  output$DensityR_HErlang <- renderPrint({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+    density_herlang <- phfit.density(ph=herlang(nestados), f = dnorm, mean = 0, sd = 1)
+    print(density_herlang)
+  })
+  
+  output$DensityR_test <- renderTable({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+    
+    pi <- (1:length(datafile[,1])-0.5)/ length(datafile[,1])
+    
+    density <- phfit.density(ph=ph(nestados), f = dnorm, mean = 0, sd = 1)
+    density_cf1 <- phfit.density(ph=cf1(nestados), f = dnorm, mean = 0, sd = 1)
+    density_herlang <- phfit.density(ph=herlang(nestados), f = dnorm, mean = 0, sd = 1)
+    
+    m_density <- density$model
+    m_density_cf1 <- density_cf1$model
+    m_density_herlang <- as(density_herlang$model, "ph")
+    
+    distribucion <- pph(datafile[,1], m_density)
+    distribucion_cf1 <- pph(datafile[,1], m_density_cf1)
+    distribucion_herlang <- pph(datafile[,1], m_density_herlang)
+    
+    pvalor_ks <- c(ks.test(datafile[,1], distribucion)$p.value, 
+                   ks.test(datafile[,1], distribucion_cf1)$p.value, 
+                   ks.test(datafile[,1], distribucion_herlang)$p.value)
+    pvalor_ad <- c(ad.test(distribucion)$p.value, 
+                   ad.test(distribucion_cf1)$p.value, 
+                   ad.test(distribucion_herlang)$p.value)
+    matriz <- matrix(c( pvalor_ad), byrow = F, ncol = 1)
+    colnames(matriz) <- c("AD-test")
+    rownames(matriz) <- c("PH", "CF1", "HErlang")
+    print(matriz)
+    
+  }, rownames = T, digits = 4)
+  
+  output$DensityR_mean <- renderTable({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+    
+    density <- phfit.density(ph=ph(nestados), f = dnorm, mean = 0, sd = 1)
+    density_cf1 <- phfit.density(ph=cf1(nestados), f = dnorm, mean = 0, sd = 1)
+    density_herlang <- phfit.density(ph=herlang(nestados), f = dnorm, mean = 0, sd = 1)
+    
+    m_density <- density$model
+    m_density_cf1 <- density_cf1$model
+    m_density_herlang <- as(density_herlang$model, "ph")
+    
+    densidad <- pph(datafile[,1], m_density)
+    densidad_cf1 <- pph(datafile[,1], m_density_cf1)
+    densidad_herlang <- pph(datafile[,1], m_density_herlang)
+    
+    pi <- (1:length(datafile[,1])-0.5)/ length(datafile[,1])
+    mean_emp=mean(pi)
+    var_emp=var(pi)*(length(pi)-1)/length(pi)
+    
+    mean_PH <- mean(densidad)
+    mean_cf1 <- mean(densidad_cf1)
+    mean_herlang <- mean(densidad_herlang)
+    
+    var_PH <- var(densidad)
+    var_cf1 <- var(densidad_cf1)
+    var_herlang <- var(densidad_herlang)
+    
+    matriz <- matrix(c(mean_PH, mean_cf1, mean_herlang, mean_emp, var_PH, var_cf1, var_herlang, var_emp), byrow = F, ncol =2)
+    colnames(matriz) <- c("Mean", "Variance")
+    rownames(matriz) <- c("PH", "CF1", "HErlang", "Empírica")
+    print(matriz)
+    
+  }, rownames = T, digits = 4)
+  
+  output$Point <- renderPlot({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    
+    datafile[,1] <- sort(datafile[,1])
+    
+    nestados <- as.numeric(input$slider1)
+    point_ph <- phfit.point(ph = ph(nestados), x = datafile[,1])
+    point_ph_model <- point_ph$model
+    point_cf1 <- phfit.point(ph = cf1(nestados), x = datafile[,1])
+    point_cf1_model <- point_cf1$model
+    point_herlang <- phfit.point(ph = herlang(nestados), x = datafile[,1])
+    point_herlang_model <- as(point_herlang$model, "ph")
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    densidad_ph <- dph(datafile[,1], point_ph_model)
+    densidad_cf1 <- dph(datafile[,1], point_cf1_model)
+    densidad_herlang <- dph(datafile[,1], point_herlang_model)
+    
+    plot(x = datafile[,1], y = densidad_ph, lwd = 3, type = "l", col = "cyan", main = "Density Function", xlab = "Datos", ylab = "f(t)", 
+         ylim = c(min(c(densidad_ph, densidad_cf1, densidad_herlang, density(datafile[,1], from = min(datafile[,1]), to = max(datafile[,1]))$y)), 
+                  max(c(densidad_ph, densidad_cf1, densidad_herlang, density(datafile[,1], from = min(datafile[,1]), to = max(datafile[,1]))$y))))
+    lines(x = datafile[,1], y = densidad_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = densidad_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    points(x = density(datafile[,1], from = min(datafile[,1], to = max(datafile[,1]))),col = "grey", pch = 1)
+    legend("topright", legend = c("PH","CF1","HErlang", "Experimental"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"), 
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+    distribucion <- pph(datafile[,1], point_ph_model)
+    distribucion_cf1 <- pph(datafile[,1], point_cf1_model)
+    distribucion_herlang <- pph(datafile[,1], point_herlang_model)
+    # plot(x = datafile[,1], y =distribucion, lwd = 2, type = 'l', col = "cyan", main = "Cumulative Distribution Function", xlab = "Datos", ylab = "F(t)")
+    pi <- (1:length(datafile[,1])-0.5)/ length(datafile[,1])
+    # lines(x = datafile[,1], y = pi, col = "red", lwd = 2, lty = 2, type = "l")
+    # legend("topleft", legend = c("Estimación PH", "Empírica"), lwd = 2, col = c("cyan", "red"), lty = c(1,2), cex = 1)
+    
+    supervivencia <- 1 - distribucion 
+    supervivencia_cf1 <- 1 - distribucion_cf1 
+    supervivencia_herlang <- 1 - distribucion_herlang
+    plot(x = datafile[,1], y =1 - pi, lwd = 1, type = "p", col ="grey", main = "Survival Function", xlab = "Datos", ylab = "R(t)", 
+         ylim = c(min(c(supervivencia, supervivencia_cf1, supervivencia_herlang,  1 - pi)), 
+                  max(c(supervivencia, supervivencia_cf1, supervivencia_herlang,  1 - pi))))
+    lines(x = datafile[,1], y = supervivencia, lwd = 3, type = "l",lty = 1, col = "cyan")
+    lines(x = datafile[,1], y = supervivencia_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = supervivencia_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    legend("topright", legend = c("PH","CF1","HErlang", "Experimental"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"), 
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+    razonfallo <- densidad_ph /supervivencia
+    razonfallo_cf1 <- densidad_cf1 /supervivencia_cf1
+    razonfallo_herlang <- densidad_herlang /supervivencia_herlang
+    plot(muhaz(datafile[,1], min.time = min(datafile[,1])), lwd = 1, type = "p", col = "grey", main = "Hazard Rate", xlab = "Datos", ylab = "h(t)",
+         ylim = c(min(c(razonfallo, razonfallo_cf1, razonfallo_herlang, muhaz(datafile[,1], min.time = min(datafile[,1]))$haz.est)), 
+                  max(c(razonfallo, razonfallo_cf1, razonfallo_herlang, muhaz(datafile[,1], min.time = min(datafile[,1]))$haz.est))))
+    lines(x = datafile[,1], y = razonfallo, lwd = 3, type = "l",lty = 1, col = "cyan")
+    lines(x = datafile[,1], y = razonfallo_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = razonfallo_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    legend("bottomright", legend = c("PH","CF1","HErlang", "Experimental"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"), 
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+    razonfalloacumulada <- -log(supervivencia)
+    razonfalloacumulada_cf1 <- -log(supervivencia_cf1)
+    razonfalloacumulada_herlang <- -log(supervivencia_herlang)
+    plot(x = datafile[,1], y =-log(1-pi), lwd = 1, type = "p", col = "grey", main = "Cumulative Hazard Rate", xlab = "Datos", ylab = "H(t)",
+         ylim = c(min(c(razonfalloacumulada, razonfalloacumulada_cf1, razonfalloacumulada_herlang, -log(1-pi))), 
+                  max(c(razonfalloacumulada, razonfalloacumulada_cf1, razonfalloacumulada_herlang, -log(1-pi)))))
+    lines(x = datafile[,1], y = razonfalloacumulada, lwd = 3, type = "l",lty = 1, col = "cyan")
+    lines(x = datafile[,1], y = razonfalloacumulada_cf1, lwd = 2, type = "l",lty = 2, col = "darkorange")
+    lines(x = datafile[,1], y = razonfalloacumulada_herlang, lwd = 2, type = "l",lty = 4, col = "darkgreen")
+    legend("bottomright", legend = c("PH","CF1","HErlang", "Experimental"), lwd = 2, col = c("cyan","darkorange","darkgreen","grey"), 
+           lty = c(1,2,3,0),pch = c(NA, NA, NA, 1), cex = 0.85)
+    
+  })
+  
+  output$PointR <- renderPrint({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+    point <- phfit.point(ph = ph(nestados), x = datafile[,1])
+    print(point)
+  })
+  
+  output$PointR_CF1 <- renderPrint({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+    point_cf1 <- phfit.point(ph = cf1(nestados), x = datafile[,1])
+    print(point_cf1)
+
+  })
+  
+  output$PointR_HErlang <- renderPrint({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+    point_herlang <- phfit.point(ph = herlang(nestados), x = datafile[,1])
+    print(point_herlang)
+  })
+  
+  output$PointR_test <- renderTable({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+    
+    pi <- (1:length(datafile[,1])-0.5)/ length(datafile[,1])
+    
+    point_ph <- phfit.point(ph = ph(nestados), x = datafile[,1])
+    point_ph_model <- point_ph$model
+    point_cf1 <- phfit.point(ph = cf1(nestados), x = datafile[,1])
+    point_cf1_model <- point_cf1$model
+    point_herlang <- phfit.point(ph = herlang(nestados), x = datafile[,1])
+    point_herlang_model <- as(point_herlang$model, "ph")
+    
+    distribucion <- pph(datafile[,1], point_ph_model)
+    distribucion_cf1 <- pph(datafile[,1], point_cf1_model)
+    distribucion_herlang <- pph(datafile[,1], point_herlang_model)
+    
+    pvalor_ks <- c(ks.test(datafile[,1], distribucion)$p.value, 
+                   ks.test(datafile[,1], distribucion_cf1)$p.value, 
+                   ks.test(datafile[,1], distribucion_herlang)$p.value)
+    pvalor_ad <- c(ad.test(distribucion)$p.value, 
+                   ad.test(distribucion_cf1)$p.value, 
+                   ad.test(distribucion_herlang)$p.value)
+    
+    matriz <- matrix(c( pvalor_ad), byrow = F, ncol = 1)
+    colnames(matriz) <- c( "AD-test")
+    rownames(matriz) <- c("PH", "CF1", "HErlang")
+    print(matriz)
+    
+  }, rownames = TRUE, digits = 4)
+  
+  output$PointR_mean <- renderTable({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datafile[,1] <- sort(datafile[,1])
+    nestados <- as.numeric(input$slider1)
+    
+    point_ph <- phfit.point(ph = ph(nestados), x = datafile[,1])
+    point_ph_model <- point_ph$model
+    point_cf1 <- phfit.point(ph = cf1(nestados), x = datafile[,1])
+    point_cf1_model <- point_cf1$model
+    point_herlang <- phfit.point(ph = herlang(nestados), x = datafile[,1])
+    point_herlang_model <- as(point_herlang$model, "ph")
+    
+    
+    distribucion_ph <- pph(datafile[,1], point_ph_model)
+    distribucion_cf1 <- pph(datafile[,1], point_cf1_model)
+    distribucion_herlang <- pph(datafile[,1], point_herlang_model)
+    pi <- (1:length(datafile[,1])-0.5)/ length(datafile[,1])
+    mean_emp=mean(pi)
+    var_emp=var(pi)
+    
+    mean_PH <- mean(distribucion_ph)
+    mean_cf1 <- mean(distribucion_cf1)
+    mean_herlang <- mean(distribucion_herlang)
+    
+    var_PH <- var(distribucion_ph)
+    var_cf1 <- var(distribucion_cf1)
+    var_herlang <- var(distribucion_herlang)
+    
+    matriz <- matrix(c(mean_PH, mean_cf1, mean_herlang, mean_emp, var_PH, var_cf1, var_herlang, var_emp), byrow = F, ncol =2)
+    colnames(matriz) <- c("Mean", "Variance")
+    rownames(matriz) <- c("PH", "CF1", "HErlang", "Experimental")
+    print(matriz)
+    
+   
+  }, rownames = T, digits = 4)
+  
+  output$text1 <- renderTable({
+    infile <- input$GetFile
+    if (is.null(infile))
+      return(NULL)
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    
+    # datafile[,1] <- sort(datafile[,1])
+    head(datafile)
+  }, digits = 5)
+  
+
+  
+}
+)
 ```
 
-### Chart C
+OCP
+=======================================================================
 
 ```{r}
+shinyApp(
+  ui <- fluidPage(
+  tags$div(HTML("<script type='text/x-mathjax-config' >
+                MathJax.Hub.Config({
+                showProcessingMessages: true,
+                jax: ['input/TeX', 'output/PreviewHTML'],
+                });
+                </script >
+                ")),
+  # App title ----
+  useShinyjs(),
+  withMathJax(uiOutput("entered", inline = TRUE)),
+  title = "One cut-point Phase-type distribution",
+  theme = shinytheme("cerulean"),
+  fluidRow(
+    wellPanel(style="background-color:#427fa5", width = "100%", height = "5%",
+              h1("One cut-point Phase-type distribution", style = "text-align:center;font-weight:bold;color:white;")
+    )
+  ),
+  sidebarLayout(
+    sidebarPanel("", 
+                 uiOutput("tab"),
+                 selectInput("dist_ocp","Choose the distribution: ", choices =
+                               list( "Exponential","Erlang",  "Generalized Erlang", "Coxian",
+                                         "General"), selected = "Erlang"),
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Exponential'",
+                   h4(strong("Exponential Distribution")),
+                   p("The Exponential Distribution has the following form:"),
+                   p('$$F(t) = 1 - \\exp(-\\lambda t), \\ t \\geq 0 $$ 
+               con \\(\\boldsymbol{\\alpha} = 1\\), \\( \\mathbf{T}_i = - \\lambda_i \\) y \\( m = 1\\)')
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Erlang'",
+                   h4(strong("Erlang Distribution")),
+                   p("The Erlang Distribution has the following form:"),
+                   p('$$F(t) = 1 - \\sum_{j = 0}^{m-1} e^{-\\lambda t} (\\lambda t)^j / j!, \\ t \\geq 0 \\
+                     for \\ m \\geq 1 \\ y \\ \\lambda_i > 0:$$'),
+                   p('$$\\boldsymbol{\\alpha} = (0, 0, \\cdots , 1) \\\\ 
+                   \\mathbf{T}_i =\\begin{pmatrix}
+                   -\\lambda_i &  &  & \\\\ 
+                   \\lambda_i  & -\\lambda_i  &  & \\\\ 
+                   & \\ddots & \\ddots & \\\\ 
+                   &  &  \\lambda_i & -\\lambda_i 
+                     \\end{pmatrix}_{m\\times m}$$')
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist == 'Generalized Erlang'",
+                   h4(strong("Generalized Erlang Distribution")),
+                   p("The Generalized Erlang Distribution has the following form:"),
+                   p('$$F(t) = 1 - \\sum_{k = 1}^{m} \\alpha_k \\left ( \\sum_{j=0}^{k-1} e^{-\\lambda t }
+                     (\\lambda t)^j /j! \\right ) \\ t \\geq 0, \\ \\lambda > 0:$$'),
+                   p('$$\\boldsymbol{\\alpha} = (\\alpha_1, \\alpha_2, \\cdots , \\alpha_m) \\\\
+                   \\mathbf{T}_i =\\begin{pmatrix}
+                   -\\lambda_i &  &  & \\\\
+                   \\lambda_i  & -\\lambda_i  &  & \\\\
+                   & \\ddots & \\ddots & \\\\
+                   &  &  \\lambda_i & -\\lambda_i
+                     \\end{pmatrix}_{m\\times m}$$')
+                 ),
+                 
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Coxian'",
+                   h4(strong("Coxian Distribution")),
+                   p("The Coxian Distribution has the following form:"),
+                   p('$$F(t) = 1 - \\sum_{k= 1}^{m} \\alpha_k \\left (\\sum_{j = 1}^k e^{-\\lambda_j t}
+                   \\prod_{i=1, i\\neq j}^{k} \\left( \\frac{\\lambda_i}{\\lambda_i - \\lambda_j} \\right ) \\right )
+                     \\ t \\geq 0:$$'),
+                   p('$$\\boldsymbol{\\alpha} = (\\alpha_1, \\alpha_2, \\cdots , \\alpha_m) \\\\
+                  \\mathbf{T}_i =\\begin{pmatrix}
+                  -\\lambda_{i_1} &  &  & \\\\
+                  \\lambda_{i_2}  & -\\lambda_{i_2}  &  & \\\\
+                  & \\ddots & \\ddots & \\\\
+                  &  &  \\lambda_{i_m} & -\\lambda_{i_m}
+                    \\end{pmatrix}_{m\\times m}$$')
+                   
+                 ), 
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'General'",
+                   h4(strong("General Distribution")),
+                   p("The General Distribution has the following form:"),
+                   p('$$\\boldsymbol{\\alpha} = (\\alpha_1, \\alpha_2, \\cdots, \\alpha_m)$$'),
+                   p('$$\\mathbf{T}_i =\\begin{pmatrix}
+                   -\\lambda_{1} & \\lambda_{12} & \\cdots & \\lambda_{1m} \\\\
+                   \\lambda_{21} & -\\lambda_{2} & \\cdots & \\lambda_{2m} \\\\ 
+                   \\vdots & \\vdots & \\ddots  & \\vdots \\\\
+                   \\lambda_{m1} & \\lambda_{m2} & \\cdots & -\\lambda_{m}
+                   \\end{pmatrix}_{m\\times m}$$')
+                 ),
+                 
+                 
+                 selectInput("tamano","Number of states: ", choices =
+                               list('m=1', 'm=2', 'm=3', 'm=4'), selected = "m=2"),
+                 numericInput("malla", "Maximum time of domain: ", value = 1),
+                 uiOutput("numInput"),
+                
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Exponential' && input.tamano == 'm=1'",
+                   p("\\( m = 1\\) y \\(\\alpha = 1\\)"),
+                   numericInput("lambda",p("\\( \\lambda \\) for \\(\\mathbf{T}_1\\)"), value = 1, min=1,step = 0.01),
+                   numericInput("lambda_exp",p("\\( \\lambda \\) for \\(\\mathbf{T}_2\\)"), value = 1, min=1,step = 0.01),
+                   ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Erlang' && input.tamano == 'm=2'",
+                   p("$$ \\boldsymbol{\\alpha} = (0,1)$$"),
+                   fluidRow(
+                     column(5, numericInput("lambda_e2_1",p("\\( \\lambda \\) for \\(\\mathbf{T}_1\\)"), value = 1, min=1,step = 0.01)),
+                     column(5, strong("First Transition Matrix"), tableOutput("hot"))
+                   ),
+                   fluidRow(
+                     column(5, numericInput("lambda_e2_2",p("\\( \\lambda \\) for \\(\\mathbf{T}_2\\)"), value = 1, min=1,step = 0.01)),
+                     column(5, strong("Second Transition Matrix"), tableOutput("hot_m2"))
+                   )
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Erlang' && input.tamano == 'm=3'",
+                   p("$$\\boldsymbol{\\alpha} = (0, 0, 1)$$"),
+                   fluidRow(
+                     column(5, numericInput("lambda_e3",p("\\( \\lambda \\) for \\(\\mathbf{T}_1\\)"), value = 1, min=1,step = 0.01)),
+                     column(5, strong("First Transition Matrix"), tableOutput("hot3"))
+                   ),
+                   
+                   fluidRow(
+                     column(5, numericInput("lambda_e3_2",p("\\( \\lambda \\) for \\(\\mathbf{T}_2\\)"), value = 1, min=1,step = 0.01)),
+                     column(5, strong("Second Transition Matrix"), tableOutput("hot3_m2"))
+                   ),
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Erlang' && input.tamano == 'm=4'",
+                   p("$$\\boldsymbol{\\alpha} = (0,0,0,1)$$"),
+                   fluidRow(
+                     column(5, numericInput("lambda_e",p("\\( \\lambda \\) for \\(\\mathbf{T}_1\\)"), value = 1, min=1,step = 0.01)), 
+                     column(5, strong("First Transition Matrix"), tableOutput("hot4"))
+                   ),
+                   fluidRow(
+                     column(5, numericInput("lambda_e_2",p("\\( \\lambda \\) for \\(\\mathbf{T}_2\\)"), value = 1, min=1,step = 0.01)), 
+                     column(5, strong("Second Transition Matrix"), tableOutput("hot4_m2"))
+                   )
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Generalized Erlang' && input.tamano == 'm=2'",
+                   fluidRow(
+                     column(5, numericInput("lambda_eg2",p("\\( \\lambda \\) for \\(\\mathbf{T}_1\\)"), value = 1, min=1,step = 0.01)),
+                     column(5, strong("First Transition Matrix"), tableOutput("hot2_eg"))
+                   ),
+                   fluidRow(
+                     column(5, numericInput("lambda_eg2_2",p("\\( \\lambda \\) for \\(\\mathbf{T}_2\\)"), value = 1, min=1,step = 0.01)),
+                     column(5, strong("Second Transition Matrix"), tableOutput("hot2_eg_m2"))
+                   ),
+                   fluidRow(
+                     column(5, numericInput("alpha_1_2","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1) ),
+                     column(5,p("$$\\alpha_2  = 1 - \\alpha_1$$"))
+                   ),
+                  
+                   
+                 ), 
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Generalized Erlang' && input.tamano == 'm=3'",
+                   fluidRow(
+                     column(5,numericInput("lambda_eg3",p("\\( \\lambda \\) for \\(\\mathbf{T}_1\\)"), value = 1, min=1,step = 0.01)),
+                     column(5, strong("First Transition Matrix"),tableOutput("hot3_eg"))
+                   ),
+                   fluidRow(
+                     column(5,numericInput("lambda_eg3_2",p("\\( \\lambda \\) for \\(\\mathbf{T}_2\\)"), value = 1, min=1,step = 0.01)),
+                     column(5, strong("Second Transition Matrix"),tableOutput("hot3_eg_m2"))
+                   ),
+                   fluidRow(column(4, numericInput("alpha_1_3","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                            column(4, numericInput("alpha_2_3","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)),
+                            column(4, p("$$\\alpha_3 = 1 - (\\alpha_1 + \\alpha_2) $$"))),
+                   
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Generalized Erlang' && input.tamano == 'm=4'",
+                   fluidRow(
+                     column(5,numericInput("lambda_eg",p("\\( \\lambda \\) for \\(\\mathbf{T}_1\\)"), value = 1, min=1,step = 0.01)),
+                     column(5, strong("First Transition Matrix"),tableOutput("hot_eg"))
+                   ),
+                   fluidRow(
+                     column(5,numericInput("lambda_eg_2",p("\\( \\lambda \\) for \\(\\mathbf{T}_2\\)"), value = 1, min=1,step = 0.01)),
+                     column(5, strong("Second Transition Matrix"),tableOutput("hot_eg_m2"))
+                   ),
+                   fluidRow(column(5, numericInput("alpha_1","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                            column(5, numericInput("alpha_2","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)),
+                            column(5, numericInput("alpha_3","$$\\alpha_3$$", value = 0, min=0, max = 1, step = 0.1)),),
+                   p("$$\\alpha_4 = 1 - (\\alpha_1 + \\alpha_2 + \\alpha_3)$$")
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Coxian' && input.tamano == 'm=2'",
+                  
+                   strong("Matrix \\(\\mathbf{T}_1\\)"),
+                   fluidRow(
+                     column(3, numericInput("lambda_1_2","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(3, numericInput("lambda_2_2","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                     column(5, strong("First Transition Matrix"), br(), br(), tableOutput("mCoxiana_2")),
+                   ),
 
+                   strong("Matrix \\(\\mathbf{T}_2\\)"),
+                   fluidRow(
+                     column(3, numericInput("lambda_1_2_m2","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(3,numericInput("lambda_2_2_m2","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01) ),
+                     column(5, strong("Second Transition Matrix"), br(), br(), tableOutput("mCoxiana_2_m2")),
+                   ),
+                   fluidRow(
+                     column(4, numericInput("alpha_1c_2","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(4, p("$$\\alpha_2 = 1 - \\alpha_1$$"))
+                   ),
+                     
+                  
+                 ),
+                 
+                 
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Coxian' && input.tamano == 'm=3'",
+                   strong("Matrix \\(\\mathbf{T}_1\\)"),
+                   fluidRow(
+                     column(4, numericInput("lambda_1_3","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(4, numericInput("lambda_2_3","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                     column(4, numericInput("lambda_3_3","$$\\lambda_{3}$$", value = 1, min=1,step = 0.01)), 
+                   ),
+                   fluidRow(align = "center", strong("First Transition Matrix"),tableOutput("mCoxiana_3")),
+                  
+                   strong("Matrix \\(\\mathbf{T}_2\\)"),
+                   fluidRow(
+                     column(4, numericInput("lambda_1_3_2","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(4, numericInput("lambda_2_3_2","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                     column(4, numericInput("lambda_3_3_2","$$\\lambda_{3}$$", value = 1, min=1,step = 0.01)), 
+                   ),
+                   fluidRow(align = "center", strong("Second Transition Matrix"),tableOutput("mCoxiana_3_m2")),
+                   
+                   fluidRow(
+                     column(3, numericInput("alpha_1c_3","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(3, numericInput("alpha_2c_3","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(3, p("$$\\alpha_3 = 1 - (\\alpha_1 + \\alpha_2 ) $$"))
+                   ),
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'Coxian' && input.tamano == 'm=4'",
+                   strong("Matrix \\(\\mathbf{T}_1\\)"),
+                   fluidRow(
+                     column(3, numericInput("lambda_1","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(3, numericInput("lambda_2","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                     column(3, numericInput("lambda_3","$$\\lambda_{3}$$", value = 1, min=1,step = 0.01)), 
+                     column(3, numericInput("lambda_4","$$\\lambda_{4}$$", value = 1, min=1,step = 0.01)), 
+                   ),
+                   fluidRow(align = "center", strong("First Transition Matrix"), tableOutput("mCoxiana")),
+                   strong("Matrix \\(\\mathbf{T}_2\\)"),
+                   fluidRow(
+                     column(3, numericInput("lambda_1_m2","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(3, numericInput("lambda_2_m2","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                     column(3, numericInput("lambda_3_m2","$$\\lambda_{3}$$", value = 1, min=1,step = 0.01)), 
+                     column(3, numericInput("lambda_4_m2","$$\\lambda_{4}$$", value = 1, min=1,step = 0.01)), 
+                   ),
+                   fluidRow(align = "center", strong("Second Transition Matrix"), tableOutput("mCoxiana_m2")),
+                   fluidRow(
+                     column(4, numericInput("alpha_1c","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(4, numericInput("alpha_2c","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)), 
+                     column(4, numericInput("alpha_3c","$$\\alpha_3$$", value = 0, min=0, max = 1, step = 0.1)), 
+                   ),
+                   p("$$\\alpha_4 = 1 - (\\alpha_1 + \\alpha_2 +\\alpha_3)$$")
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'General' && input.tamano == 'm=4'",
+                   fluidRow(
+                     column(4, numericInput("alpha_1g","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(4, numericInput("alpha_2g","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)), 
+                     column(4, numericInput("alpha_3g","$$\\alpha_3$$", value = 0, min=0, max = 1, step = 0.1)),
+                   ),
+                   p("$$\\alpha_4 = 1 -(\\alpha_1 + \\alpha_2 +\\alpha_3)$$"),
+                   p(strong(" Matrix \\(\\mathbf{T}_1\\)")),
+                   fluidRow(
+                     column(3,numericInput("lambda_11","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(3, numericInput("lambda_12","$$\\lambda_{12}$$ ", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_13","$$\\lambda_{13}$$ ", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_14","$$\\lambda_{14}$$ ", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(3,numericInput("lambda_21","$$\\lambda_{21}$$ ", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_22","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                     column(3, numericInput("lambda_23","$$\\lambda_{23}$$ ", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_24","$$\\lambda_{24}$$ ", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(3,numericInput("lambda_31","$$\\lambda_{31}$$", value = 0, min=0,step = 0.01) ),
+                     column(3, numericInput("lambda_32","$$\\lambda_{32}$$", value = 0, min=0,step = 0.01) ),
+                     column(3, numericInput("lambda_33","$$\\lambda_{3}$$", value = 1, min=1,step = 0.01) ),
+                     column(3, numericInput("lambda_34","$$\\lambda_{34}$$", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(3,numericInput("lambda_41","$$\\lambda_{41}$$", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_42","$$\\lambda_{42}$$", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_43","$$\\lambda_{43}$$", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_44","$$\\lambda_{4}$$", value = 1, min=1,step = 0.01)),
+                   ),
+                   p(strong(" Matrix \\(\\mathbf{T}_2\\)")),
+                   fluidRow(
+                     column(3,numericInput("lambda_11_m2","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(3, numericInput("lambda_12_m2","$$\\lambda_{12}$$ ", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_13_m2","$$\\lambda_{13}$$ ", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_14_m2","$$\\lambda_{14}$$ ", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(3,numericInput("lambda_21_m2","$$\\lambda_{21}$$ ", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_22_m2","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                     column(3, numericInput("lambda_23_m2","$$\\lambda_{23}$$ ", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_24_m2","$$\\lambda_{24}$$ ", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(3,numericInput("lambda_31_m2","$$\\lambda_{31}$$", value = 0, min=0,step = 0.01) ),
+                     column(3, numericInput("lambda_32_m2","$$\\lambda_{32}$$", value = 0, min=0,step = 0.01) ),
+                     column(3, numericInput("lambda_33_m2","$$\\lambda_{3}$$", value = 1, min=1,step = 0.01) ),
+                     column(3, numericInput("lambda_34_m2","$$\\lambda_{34}$$", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(3,numericInput("lambda_41_m2","$$\\lambda_{41}$$", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_42_m2","$$\\lambda_{42}$$", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_43_m2","$$\\lambda_{43}$$", value = 0, min=0,step = 0.01)),
+                     column(3, numericInput("lambda_44_m2","$$\\lambda_{4}$$", value = 1, min=1,step = 0.01)),
+                   ),
+                   
+                   
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'General' && input.tamano == 'm=3'",
+                   fluidRow(
+                     column(3, numericInput("alpha_1g_3","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(3, numericInput("alpha_2g_3","$$\\alpha_2$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(5, p("$$\\alpha_3 = 1 -(\\alpha_1 + \\alpha_2)$$")),
+                   ),
+                   
+                   p(strong("Matrix \\(\\mathbf{T}_1\\)")),
+                   fluidRow(
+                     column(4,numericInput("lambda_11_3","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(4, numericInput("lambda_12_3","$$\\lambda_{12}$$ ", value = 0, min=0,step = 0.01)),
+                     column(4, numericInput("lambda_13_3","$$\\lambda_{13}$$ ", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(4,numericInput("lambda_21_3","$$\\lambda_{21}$$ ", value = 0, min=0,step = 0.01)),
+                     column(4, numericInput("lambda_22_3","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                     column(4, numericInput("lambda_23_3","$$\\lambda_{23}$$ ", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(4,numericInput("lambda_31_3","$$\\lambda_{31}$$", value = 0, min=0,step = 0.01) ),
+                     column(4, numericInput("lambda_32_3","$$\\lambda_{32}$$", value = 0, min=0,step = 0.01) ),
+                     column(4, numericInput("lambda_33_3","$$\\lambda_{3}$$", value = 1, min=1,step = 0.01) ),
+                   ),
+                   p(strong("Matrix \\(\\mathbf{T}_2\\)")),
+                   fluidRow(
+                     column(4,numericInput("lambda_11_3_m2","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(4, numericInput("lambda_12_3_m2","$$\\lambda_{12}$$ ", value = 0, min=0,step = 0.01)),
+                     column(4, numericInput("lambda_13_3_m2","$$\\lambda_{13}$$ ", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(4,numericInput("lambda_21_3_m2","$$\\lambda_{21}$$ ", value = 0, min=0,step = 0.01)),
+                     column(4, numericInput("lambda_22_3_m2","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                     column(4, numericInput("lambda_23_3_m2","$$\\lambda_{23}$$ ", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(4,numericInput("lambda_31_3_m2","$$\\lambda_{31}$$", value = 0, min=0,step = 0.01) ),
+                     column(4, numericInput("lambda_32_3_m2","$$\\lambda_{32}$$", value = 0, min=0,step = 0.01) ),
+                     column(4, numericInput("lambda_33_3_m2","$$\\lambda_{3}$$", value = 1, min=1,step = 0.01) ),
+                   ),
+                   
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.dist_ocp == 'General' && input.tamano == 'm=2'",
+                   fluidRow(
+                     column(5, numericInput("alpha_1g_2","$$\\alpha_1$$", value = 0, min=0, max = 1, step = 0.1)),
+                     column(5, p('$$\\alpha_2 = 1 - \\alpha_1$$'))
+                   ),
+                   
+                   p(strong("Matrix \\(\\mathbf{T}_1\\)")),
+                   fluidRow(
+                     column(5,numericInput("lambda_11_2","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(5, numericInput("lambda_12_2","$$\\lambda_{12}$$ ", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(5,numericInput("lambda_21_2","$$\\lambda_{21}$$ ", value = 0, min=0,step = 0.01)),
+                     column(5, numericInput("lambda_22_2","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                   ),
+                   p(strong("Matrix \\(\\mathbf{T}_2\\)")),
+                   fluidRow(
+                     column(5,numericInput("lambda_11_2_m2","$$\\lambda_{1}$$", value = 1, min=1,step = 0.01)),
+                     column(5, numericInput("lambda_12_2_m2","$$\\lambda_{12}$$ ", value = 0, min=0,step = 0.01)),
+                   ),
+                   fluidRow(
+                     column(5,numericInput("lambda_21_2_m2","$$\\lambda_{21}$$ ", value = 0, min=0,step = 0.01)),
+                     column(5, numericInput("lambda_22_2_m2","$$\\lambda_{2}$$", value = 1, min=1,step = 0.01)),
+                   ),
+                   
+                   
+                   
+                 ),
+                 
+                 
+                 
+                 ),
+    mainPanel(
+      
+      h3(strong("One cut-point Phase-type distribution")),
+      p("Let \\(X\\) be a random variable defined on the non negative half line with representation: 
+      \\((a, \\boldsymbol{\\alpha}, \\mathbf{T}_1, \\mathbf{T}_2)\\) where \\( a \\) is the cut-point."),
+     
+      fluidRow(
+        column(5, strong("Density Function", style = "color:#427fa5"),p("$$f(x) = \\left \\{\\begin{matrix}
+\\boldsymbol{\\alpha} \\exp(\\mathbf{T}_1x) \\mathbf{T}_1^0 \\ ; \\ \\ x \\leq a \\\\ 
+\\boldsymbol{\\alpha} \\exp(\\mathbf{T}_1a) \\exp(\\mathbf{T}_2(x-a))\\mathbf{T}_2^0 \\ ; \\ \\ x > a
+\\end{matrix}\\right.$$")),
+        column(5,strong("Survival Function", style = "color:#427fa5"), p("$$R(x) = \\left\\{\\begin{matrix} 
+        \\boldsymbol{\\alpha} \\exp(\\mathbf{T}_1x) \\mathbf{e} \\ ;\\ \\ x \\leq a \\\\
+        \\boldsymbol{\\alpha} \\exp(\\mathbf{T}_1 a) \\exp(\\mathbf{T}_2(x-a)) \\mathbf{e} \\ ;\\ \\ x > a
+        \\end{matrix}\\right.$$") ),
+      ),
+      
+      fluidRow(
+        
+        column(5, strong("Hazard Rate", style = "color:#427fa5"), p("$$h(x) = \\frac{f(x)}{R(x)}$$")),
+        column(5, strong("Cumulative Hazard Rate", style = "color:#427fa5"),p("$$H(x) = \\left\\{\\begin{matrix}
+        - \\ln (\\boldsymbol{\\alpha} \\exp(\\mathbf{T}_1 x) \\mathbf{e}) \\ ; \\ \\ x\\leq a \\\\
+        - \\ln (\\boldsymbol{\\alpha} \\exp(\\mathbf{T}_1 a) \\exp(\\mathbf{T}_2(x-a)) \\mathbf{e}) \\ ;\\ \\ x > a
+        \\end{matrix}\\right.$$") )
+      ),
+    
+    
+    
+
+      h3(strong(em("Example"), style = "color:red")),
+      conditionalPanel(
+        condition = "input.tamano == 'm=1'",
+        h4(strong("Exponential Distribution")),
+        plotOutput("Exponential")),
+      conditionalPanel(
+        condition = "input.dist_ocp == 'Erlang' && input.tamano == 'm=4'",
+        h4(strong("Erlang Distribution")),
+        plotOutput("Erlang")),
+      
+      conditionalPanel(
+        condition = "input.dist_ocp == 'Erlang' && input.tamano == 'm=2'",
+        h4(strong("Erlang Distribution")),
+        plotOutput("Erlang_2")),
+      conditionalPanel(
+        condition = "input.dist_ocp == 'Erlang' && input.tamano == 'm=3'",
+        h4(strong("Erlang Distribution")),
+        plotOutput("Erlang_3")),
+      conditionalPanel(
+        condition = "input.dist_ocp == 'Generalized Erlang' && input.tamano == 'm=4'",
+        h4(strong("Generalized Erlang Distribution")),
+        plotOutput('ErlangG')),
+      conditionalPanel(
+        condition = "input.dist_ocp == 'Generalized Erlang' && input.tamano == 'm=2'",
+        h4(strong("Generalized Erlang Distribution")),
+        plotOutput('ErlangG_2')),
+      conditionalPanel(
+        condition = "input.dist_ocp == 'Generalized Erlang' && input.tamano == 'm=3'",
+        h4(strong("Generalized Erlang Distribution")),
+        plotOutput('ErlangG_3')),
+      
+      conditionalPanel(
+        condition = "input.dist_ocp == 'Coxian' && input.tamano == 'm=4'",
+        h4(strong("Coxian Distribution")),
+        plotOutput("Coxian")),
+      conditionalPanel(
+        condition = "input.dist_ocp == 'Coxian' && input.tamano == 'm=2'",
+        h4(strong("Coxian Distribution")),
+        plotOutput("Coxiana_2")),
+      conditionalPanel(
+        condition = "input.dist_ocp == 'Coxian' && input.tamano == 'm=3'",
+        h4(strong("Coxian Distribution")),
+        plotOutput("Coxiana_3")),
+      
+      conditionalPanel(
+        condition = "input.dist_ocp == 'General' && input.tamano == 'm=4'",
+        h4(strong("General Distribution")),
+        fluidRow(
+          column(3, p(strong("First Transition Matrix")) ),
+          column(3,  p(strong("Second Transition Matrix"))),
+        ),
+        fluidRow(
+          column(3, tableOutput("general")),
+          column(3, tableOutput("general_m2")),
+        ),
+      
+        plotOutput("General")
+      ),
+      
+      conditionalPanel(
+        condition = "input.dist_ocp == 'General' && input.tamano == 'm=3'",
+        h4(strong("General Distribution")),
+        fluidRow(
+          column(3, p(strong("First Transition Matrix")) ),
+          column(3,  p(strong("Second Transition Matrix"))),
+        ),
+        fluidRow(
+          column(3, tableOutput("general_3")),
+          column(3, tableOutput("general_3_m2")),
+        ),
+        
+        plotOutput("General_3")
+      ),
+      
+      conditionalPanel(
+        condition = "input.dist_ocp == 'General' && input.tamano == 'm=2'",
+        h4(strong("General Distribution")),
+        fluidRow(
+          column(3, p(strong("First Transition Matrix")) ),
+          column(3,  p(strong("Second Transition Matrix"))),
+        ),
+        fluidRow(
+        column(3, tableOutput("general_2")),
+        column(3, tableOutput("general_2_m2")),
+        ),
+        plotOutput("General_2")
+      ),
+
+    )
+  )
+),
+
+# Define server 
+server <- function(input, output) {
+
+  matrizT <- function(m, lambda){
+    matrizT <- matrix(nrow = m, ncol = m)
+    for(i in 1:m){
+      for(j in 1:m){
+        if(i==j){matrizT[i,j] <- -lambda}
+        else {matrizT[i,j] <- 0}
+        submatriz<- matrizT[c(2:m), c(1:m-1)]
+        for(k in 1:nrow(submatriz)){
+          for(s in 1:ncol(submatriz)){
+            if(k==s) submatriz[k,s] = lambda
+          }
+        }
+        matrizT[c(2:m), c(1:m-1)] <- submatriz
+        
+      }
+    }
+    return(matrizT)
+  }
+  
+  matrizT_Coxian<-function(lambdas, m){
+    matrizT<-matrix(nrow = m, ncol = m)
+    for(i in 1:m){
+      for(j in 1:m){
+        if(i==j){ matrizT[i,j] = - lambdas[i]}
+        else matrizT[i,j] = 0
+        submatriz<- matrizT[c(2:m), c(1:m-1)]
+        for(k in 1:nrow(submatriz)){
+          for(s in 1:ncol(submatriz)){
+            if(k==s) submatriz[k,s] = lambdas[k+1]
+          }
+        }
+        matrizT[c(2:m), c(1:m-1)] <- submatriz
+        
+      }
+    }
+    return(matrizT)
+  }
+  
+  output$hot <- renderTable({
+    m <- 2
+    lambda = as.numeric(input$lambda_e2_1)
+    
+    matriz<- matrix(c(-lambda, 0, lambda, -lambda), byrow = T, ncol = m, nrow = m)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot_m2 <- renderTable({
+    m <- 2
+    lambda = as.numeric(input$lambda_e2_2)
+    
+    matriz<- matrix(c(-lambda, 0, lambda, -lambda), byrow = T, ncol = m, nrow = m)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot2_eg <- renderTable({
+    m <- 2
+    lambda = as.numeric(input$lambda_eg2)
+    
+    matriz<- matrix(c(-lambda, 0, lambda, -lambda), byrow = T, ncol = m, nrow = m)
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot2_eg_m2 <- renderTable({
+    m <- 2
+    lambda = as.numeric(input$lambda_eg2_2)
+    
+    matriz<- matrix(c(-lambda, 0, lambda, -lambda), byrow = T, ncol = m, nrow = m)
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$mCoxiana_2 <- renderTable({
+    m <- 2
+    lambda1 = as.numeric(input$lambda_1_2)
+    lambda2 = as.numeric(input$lambda_2_2)
+    
+    matriz<- matrix(c(-lambda1, 0, lambda2, -lambda2), byrow = T, ncol = m, nrow = m)
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$mCoxiana_2_m2 <- renderTable({
+    m <- 2
+    lambda1 = as.numeric(input$lambda_1_2_m2)
+    lambda2 = as.numeric(input$lambda_2_2_m2)
+    
+    matriz<- matrix(c(-lambda1, 0, lambda2, -lambda2), byrow = T, ncol = m, nrow = m)
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot3 <- renderTable({
+    m <- 3
+    lambda = as.numeric(input$lambda_e3)
+    
+    matriz <- matrizT(m, lambda)
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot3_m2 <- renderTable({
+    m <- 3
+    lambda = as.numeric(input$lambda_e3_2)
+    
+    matriz <- matrizT(m, lambda)
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot3_eg <- renderTable({
+    m <- 3
+    lambda = as.numeric(input$lambda_eg3)
+    
+    matriz <- matrizT(m, lambda)
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot3_eg_m2 <- renderTable({
+    m <- 3
+    lambda = as.numeric(input$lambda_eg3_2)
+    
+    matriz <- matrizT(m, lambda)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$mCoxiana_3 <- renderTable({
+    m = 3
+    lambda1 = as.numeric(input$lambda_1_3)
+    lambda2 = as.numeric(input$lambda_2_3)
+    lambda3 = as.numeric(input$lambda_3_3)
+    lambda_c <- c(lambda1, lambda2, lambda3)
+    
+    matriz_c <- matrizT_Coxian(lambda_c, m)
+    print(matriz_c)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$mCoxiana_3_m2 <- renderTable({
+    m = 3
+    lambda1 = as.numeric(input$lambda_1_3_2)
+    lambda2 = as.numeric(input$lambda_2_3_2)
+    lambda3 = as.numeric(input$lambda_3_3_2)
+    lambda_c <- c(lambda1, lambda2, lambda3)
+    
+    matriz_c <- matrizT_Coxian(lambda_c, m)
+    print(matriz_c)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot4 <- renderTable({
+    m <- 4
+    lambda = as.numeric(input$lambda_e)
+    
+    matriz <- matrizT(m, lambda)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$hot4_m2 <- renderTable({
+    m <- 4
+    lambda = as.numeric(input$lambda_e_2)
+    
+    matriz <- matrizT(m, lambda)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  
+  output$hot_eg <- renderTable({
+    m=4
+    lambda = as.numeric(input$lambda_eg)
+    
+    matriz <- matrizT(m, lambda)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  
+  output$hot_eg_m2 <- renderTable({
+    m=4
+    lambda = as.numeric(input$lambda_eg_2)
+    
+    matriz <- matrizT(m, lambda)
+    
+    print(matriz)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$mCoxiana <- renderTable({
+    m = 4
+    lambda1 = as.numeric(input$lambda_1)
+    lambda2 = as.numeric(input$lambda_2)
+    lambda3 = as.numeric(input$lambda_3)
+    lambda4 = as.numeric(input$lambda_4)
+    lambda_c <- c(lambda1, lambda2, lambda3, lambda4)
+    
+    matriz_c <- matrizT_Coxian(lambda_c, m)
+    print(matriz_c)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$mCoxiana_m2 <- renderTable({
+    m = 4
+    lambda1 = as.numeric(input$lambda_1_m2)
+    lambda2 = as.numeric(input$lambda_2_m2)
+    lambda3 = as.numeric(input$lambda_3_m2)
+    lambda4 = as.numeric(input$lambda_4_m2)
+    lambda_c <- c(lambda1, lambda2, lambda3, lambda4)
+    
+    matriz_c <- matrizT_Coxian(lambda_c, m)
+    print(matriz_c)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$general <- renderTable({
+    m <- 4
+    lambda1 = as.numeric(input$lambda_11)
+    lambda2 = as.numeric(input$lambda_22)
+    lambda3 = as.numeric(input$lambda_33)
+    lambda4 = as.numeric(input$lambda_44)
+    lambda12 = as.numeric(input$lambda_12)
+    lambda21 = as.numeric(input$lambda_21)
+    lambda31 = as.numeric(input$lambda_31)
+    lambda41 = as.numeric(input$lambda_41)
+    lambda13 = as.numeric(input$lambda_13)
+    lambda23 = as.numeric(input$lambda_23)
+    lambda32 = as.numeric(input$lambda_32)
+    lambda42 = as.numeric(input$lambda_42)
+    lambda14 = as.numeric(input$lambda_14)
+    lambda24 = as.numeric(input$lambda_24)
+    lambda34 = as.numeric(input$lambda_34)
+    lambda43 = as.numeric(input$lambda_43)
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda13, lambda14, lambda21, -lambda2, lambda23, lambda24, 
+                   lambda31, lambda32, -lambda3, lambda34, lambda41, lambda42, lambda43, -lambda4)
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    print(matriz_g)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$general_m2 <- renderTable({
+    m <- 4
+    lambda1 = as.numeric(input$lambda_11_m2)
+    lambda2 = as.numeric(input$lambda_22_m2)
+    lambda3 = as.numeric(input$lambda_33_m2)
+    lambda4 = as.numeric(input$lambda_44_m2)
+    lambda12 = as.numeric(input$lambda_12_m2)
+    lambda21 = as.numeric(input$lambda_21_m2)
+    lambda31 = as.numeric(input$lambda_31_m2)
+    lambda41 = as.numeric(input$lambda_41_m2)
+    lambda13 = as.numeric(input$lambda_13_m2)
+    lambda23 = as.numeric(input$lambda_23_m2)
+    lambda32 = as.numeric(input$lambda_32_m2)
+    lambda42 = as.numeric(input$lambda_42_m2)
+    lambda14 = as.numeric(input$lambda_14_m2)
+    lambda24 = as.numeric(input$lambda_24_m2)
+    lambda34 = as.numeric(input$lambda_34_m2)
+    lambda43 = as.numeric(input$lambda_43_m2)
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda13, lambda14, lambda21, -lambda2, lambda23, lambda24, 
+                   lambda31, lambda32, -lambda3, lambda34, lambda41, lambda42, lambda43, -lambda4)
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    print(matriz_g)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$general_2 <- renderTable({
+    
+    m = 2
+    
+    lambda1 = as.numeric(input$lambda_11_2)
+    lambda12 = as.numeric(input$lambda_12_2)
+    
+    lambda21 = as.numeric(input$lambda_21_2)
+    lambda2 = as.numeric(input$lambda_22_2)
+    
+    
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda21, -lambda2)
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    print(matriz_g)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$general_2_m2 <- renderTable({
+    
+    m = 2
+    
+    lambda1 = as.numeric(input$lambda_11_2_m2)
+    lambda12 = as.numeric(input$lambda_12_2_m2)
+    
+    lambda21 = as.numeric(input$lambda_21_2_m2)
+    lambda2 = as.numeric(input$lambda_22_2_m2)
+    
+    
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda21, -lambda2)
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    print(matriz_g)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$general_3 <- renderTable({
+    
+    m = 3
+    
+    lambda1 = as.numeric(input$lambda_11_3)
+    lambda12 = as.numeric(input$lambda_12_3)
+    lambda13 = as.numeric(input$lambda_13_3)
+    lambda21 = as.numeric(input$lambda_21_3)
+    lambda2 = as.numeric(input$lambda_22_3)
+    lambda23 = as.numeric(input$lambda_23_3)
+    lambda31 = as.numeric(input$lambda_31_3)
+    lambda32 = as.numeric(input$lambda_32_3)
+    lambda3 = as.numeric(input$lambda_33_3)
+    
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda13, lambda21, -lambda2, lambda23, 
+                   lambda31, lambda32, -lambda3 )
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    print(matriz_g)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  output$general_3_m2 <- renderTable({
+    
+    m = 3
+    
+    lambda1 = as.numeric(input$lambda_11_3_m2)
+    lambda12 = as.numeric(input$lambda_12_3_m2)
+    lambda13 = as.numeric(input$lambda_13_3_m2)
+    lambda21 = as.numeric(input$lambda_21_3_m2)
+    lambda2 = as.numeric(input$lambda_22_3_m2)
+    lambda23 = as.numeric(input$lambda_23_3_m2)
+    lambda31 = as.numeric(input$lambda_31_3_m2)
+    lambda32 = as.numeric(input$lambda_32_3_m2)
+    lambda3 = as.numeric(input$lambda_33_3_m2)
+    
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda13, lambda21, -lambda2, lambda23, 
+                   lambda31, lambda32, -lambda3 )
+    matriz_g <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    print(matriz_g)
+    
+  }, colnames = F, rownames = F, digits = 2)
+  
+  
+  fdensidad <- function(alpha, T1, T2, t, a, m){
+    uno=rep(1,m)
+    dens=vector()
+    for(i in 1:length(t)){
+      if(t[i]<=a){
+        dens[i]=alpha%*%expm(T1*t[i])%*%(-T1%*%uno)
+      } else{
+        dens[i]=alpha%*%expm(T1*a)%*%expm(T2*(t[i]-a))%*%(-T2%*%uno)
+      }
+    }
+    return(dens)
+  }
+  
+  fdistribucion <- function(alpha, T1, T2, t, a, m){
+    uno=rep(1,m)
+    distr=vector()
+    for(i in 1:length(t)){
+      if(t[i]<=a){
+        distr[i]=1-(alpha%*%expm(T1*t[i])%*%(uno))
+      } else{
+        distr[i]=1-(alpha%*%expm(T1*a)%*%expm(T2*(t[i]-a))%*%(uno))
+      }
+    }
+    return(distr)
+  }
+  
+  fsupervivencia <- function(alpha, T1, T2, t, a, m){
+    uno=rep(1,m)
+    sup=vector()
+    for(i in 1:length(t)){
+      if(t[i]<=a){
+        sup[i]=(alpha%*%expm(T1*t[i])%*%(uno))
+      } else{
+        sup[i]=(alpha%*%expm(T1*a)%*%expm(T2*(t[i]-a))%*%(uno))
+      }
+    }
+    return(sup)
+  }
+  
+  
+  output$Exponential <-renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    alpha = 1
+    lambda_1 <- as.numeric(input$lambda)
+    lambda_2 <- as.numeric(input$lambda_exp)
+    puntocorte <- as.numeric(input$punt1)
+    
+    Tmatriz1 <- -lambda_1
+    Tmatriz2 <- -lambda_2
+  
+
+    
+    fd_exp <- function(alpha, T1, T2, t, a){
+      uno=1
+      dens=vector()
+      for(i in 1:length(t)){
+        if(t[i]<=a){
+          dens[i]=alpha%*%exp(T1*t[i])%*%(-T1%*%uno)
+        } else{
+          dens[i]=alpha%*%exp(T1*a)%*%exp(T2*(t[i]-a))%*%(-T2%*%uno)
+        }
+      }
+      return(dens)
+    }
+    
+    fdist_exp <- function(alpha, T1, T2, t, a){
+      uno=1
+      distr=vector()
+      for(i in 1:length(t)){
+        if(t[i]<=a){
+          distr[i]=1- (alpha%*%exp(T1*t[i])%*%(uno))
+        } else{
+          distr[i]=1-(alpha%*%exp(T1*a)%*%exp(T2*(t[i]-a))%*%(uno))
+        }
+      }
+      return(distr)
+    }
+    
+    fsup_exp <- function(alpha, T1, T2, t, a){
+      uno=1
+      sup=vector()
+      for(i in 1:length(t)){
+        if(t[i]<=a){
+          sup[i]=(alpha%*%exp(T1*t[i])%*%(uno))
+        } else{
+          sup[i]=(alpha%*%exp(T1*a)%*%exp(T2*(t[i]-a))%*%(uno))
+        }
+      }
+      return(sup)
+    }
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fdens <- fd_exp(alpha, Tmatriz1, Tmatriz2, t, puntocorte)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdistr <- fdist_exp(alpha, Tmatriz1, Tmatriz2, t, puntocorte)
+    # plot(x= t1, y = fdist1, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)), ylim = c(0, tail(fdist2, n=1)))
+    # lines(x= t2, y = fdist2, col = "red", lwd = 2)
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    #
+    fsup <- fsup_exp(alpha, Tmatriz1, Tmatriz2, t, puntocorte)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5", 
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    # 
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5", 
+        lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1))) 
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+  })
+  
+  output$Erlang <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    puntocorte <- as.numeric(input$punt1)
+    m = 4
+    alpha <-c(rep(0,m-1), 1)
+    
+    lambda_1 =  as.numeric(input$lambda_e)
+    lambda_2 =  as.numeric(input$lambda_e_2)
+    
+    Tmatriz1 <- matrizT(m, lambda_1)
+    Tmatriz2 <- matrizT(m, lambda_2)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+  })
+  
+  output$Erlang_2 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    puntocorte <- as.numeric(input$punt1)
+    m = 2
+    alpha <-c(rep(0,m-1), 1)
+    
+    lambda_1 = as.numeric(input$lambda_e2_1)
+    lambda_2 = as.numeric(input$lambda_e2_2)
+    
+    Tmatriz1<- matrix(c(-lambda_1, 0, lambda_1, -lambda_1), byrow = T, ncol = m, nrow = m)
+    Tmatriz2 <- matrix(c(-lambda_2, 0, lambda_2, -lambda_2), byrow = T, ncol = m, nrow = m)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+
+  })
+  
+  output$Erlang_3 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 3
+    
+    alpha <-c(rep(0,m-1), 1)
+    
+    puntocorte <- as.numeric(input$punt1)
+    
+    
+    lambda_1 =  as.numeric(input$lambda_e3)
+    lambda_2 =  as.numeric(input$lambda_e3_2)
+    
+    Tmatriz1 <- matrizT(m, lambda_1)
+    Tmatriz2 <- matrizT(m, lambda_2)
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+  })
+  
+  output$ErlangG <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 4
+    puntocorte <- as.numeric(input$punt1)
+    
+    lambda_1 =  as.numeric(input$lambda_eg)
+    lambda_2 =  as.numeric(input$lambda_eg_2)
+    
+    alpha_1 = as.numeric(input$alpha_1)
+    alpha_2 = as.numeric(input$alpha_2)
+    alpha_3 = as.numeric(input$alpha_3)
+    alpha_4 = 1- (alpha_1+alpha_2+alpha_3)
+    
+    alpha<- c(alpha_1, alpha_2, alpha_3, alpha_4)
+    
+    Tmatriz1 <- matrizT(m, lambda_1)
+    Tmatriz2 <- matrizT(m, lambda_2)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    
+  })
+  
+  output$ErlangG_2 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    puntocorte <- as.numeric(input$punt1)
+    m = 2
+  
+    
+    lambda_1 =  as.numeric(input$lambda_eg2)
+    lambda_2 =  as.numeric(input$lambda_eg2_2)
+    
+    alpha_1 = as.numeric(input$alpha_1_2)
+    alpha_2 = 1- (alpha_1)
+    
+    alpha <- c(alpha_1, alpha_2)
+    
+    Tmatriz1<- matrix(c(-lambda_1, 0, lambda_1, -lambda_1), byrow = T, ncol = m, nrow = m)
+    Tmatriz2 <- matrix(c(-lambda_2, 0, lambda_2, -lambda_2), byrow = T, ncol = m, nrow = m)
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    
+    
+  })
+  
+  output$ErlangG_3 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 3
+    puntocorte <- as.numeric(input$punt1)
+    
+    lambda_1=  as.numeric(input$lambda_eg3)
+    lambda_2 = as.numeric(input$lambda_eg3_2)
+    
+    alpha_1 = as.numeric(input$alpha_1_3)
+    alpha_2 = as.numeric(input$alpha_2_3)
+    alpha_3 = 1- (alpha_1+alpha_2)
+    
+    alpha <- c(alpha_1, alpha_2, alpha_3)
+    
+    Tmatriz1<- matrizT(m, lambda_1)
+    Tmatriz2<- matrizT(m, lambda_2)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    
+  })
+  
+  output$Coxian<- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 4
+    puntocorte <- as.numeric(input$punt1)
+    
+    lambda1 = as.numeric(input$lambda_1)
+    lambda2 = as.numeric(input$lambda_2)
+    lambda3 = as.numeric(input$lambda_3)
+    lambda4 = as.numeric(input$lambda_4)
+    lambda_1 <- c(lambda1, lambda2, lambda3, lambda4)
+    
+    lambda1_2 = as.numeric(input$lambda_1_m2)
+    lambda2_2 = as.numeric(input$lambda_2_m2)
+    lambda3_2 = as.numeric(input$lambda_3_m2)
+    lambda4_2 = as.numeric(input$lambda_4_m2)
+    lambda_2 <- c(lambda1_2, lambda2_2, lambda3_2, lambda4_2)
+    
+    
+    alpha1_c = as.numeric(input$alpha_1c)
+    alpha2_c = as.numeric(input$alpha_2c)
+    alpha3_c = as.numeric(input$alpha_3c)
+    alpha4_c = 1- (alpha1_c+alpha2_c+alpha3_c)
+    
+    alpha <- c(alpha1_c, alpha2_c, alpha3_c, alpha4_c)
+    
+    
+    Tmatriz1 <- matrizT_Coxian(lambda_1, m)
+    Tmatriz2 <- matrizT_Coxian(lambda_2, m)
+    
+   
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    
+  })
+  
+  output$Coxiana_2<- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    puntocorte <- as.numeric(input$punt1)
+    m = 2
+    
+    lambda1 = as.numeric(input$lambda_1_2)
+    lambda2 = as.numeric(input$lambda_2_2)
+    lambda1_2 = as.numeric(input$lambda_1_2_m2)
+    lambda2_2 = as.numeric(input$lambda_2_2_m2)
+    lambda_c <- c(lambda1, lambda2)
+    lambda_c_2 <- c(lambda1_2, lambda2_2)
+    
+    
+    alpha1_c = as.numeric(input$alpha_1c_2)
+    alpha2_c = 1- (alpha1_c)
+    
+    alpha <- c(alpha1_c, alpha2_c)
+    
+    
+    Tmatriz1<- matrix(c(-lambda1, 0, lambda2, -lambda2), byrow = T, ncol = m, nrow = m)
+    Tmatriz2<- matrix(c(-lambda1_2, 0, lambda2_2, -lambda2_2), byrow = T, ncol = m, nrow = m)
+    
+   
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+   
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    
+  })
+  
+  output$Coxiana_3<- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    puntocorte <- as.numeric(input$punt1)
+    m = 3
+    
+    lambda1 = as.numeric(input$lambda_1_3)
+    lambda2 = as.numeric(input$lambda_2_3)
+    lambda3 = as.numeric(input$lambda_3_3)
+    lambda_1 <- c(lambda1, lambda2, lambda3)
+    
+    lambda1_2 = as.numeric(input$lambda_1_3_2)
+    lambda2_2 = as.numeric(input$lambda_2_3_2)
+    lambda3_2 = as.numeric(input$lambda_3_3_2)
+    lambda_2 <- c(lambda1_2, lambda2_2, lambda3_2)
+    
+    
+    alpha1_c = as.numeric(input$alpha_1c_3)
+    alpha2_c = as.numeric(input$alpha_2c_3)
+    alpha3_c = 1- (alpha1_c+alpha2_c)
+    
+    alpha <- c(alpha1_c, alpha2_c, alpha3_c)
+    
+    
+    Tmatriz1 <- matrizT_Coxian(lambda_1, m)
+    Tmatriz2 <- matrizT_Coxian(lambda_2, m)
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    
+    
+  })
+  
+  output$General <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    m = 4
+    puntocorte <- as.numeric(input$punt1)
+    
+    lambda1 = as.numeric(input$lambda_11); lambda1_2 = as.numeric(input$lambda_11_m2)
+    lambda2 = as.numeric(input$lambda_22); lambda2_2 = as.numeric(input$lambda_22_m2)
+    lambda3 = as.numeric(input$lambda_33); lambda3_2 = as.numeric(input$lambda_33_m2)
+    lambda4 = as.numeric(input$lambda_44); lambda4_2 = as.numeric(input$lambda_44_m2)
+    lambda12 = as.numeric(input$lambda_12); lambda12_2 = as.numeric(input$lambda_12_m2)
+    lambda21 = as.numeric(input$lambda_21); lambda21_2 = as.numeric(input$lambda_21_m2)
+    lambda31 = as.numeric(input$lambda_31); lambda31_2 = as.numeric(input$lambda_31_m2)
+    lambda41 = as.numeric(input$lambda_41); lambda41_2 = as.numeric(input$lambda_41_m2)
+    lambda13 = as.numeric(input$lambda_13); lambda13_2 = as.numeric(input$lambda_13_m2)
+    lambda23 = as.numeric(input$lambda_23); lambda23_2 = as.numeric(input$lambda_23_m2)
+    lambda32 = as.numeric(input$lambda_32); lambda32_2 = as.numeric(input$lambda_32_m2)
+    lambda42 = as.numeric(input$lambda_42); lambda42_2 = as.numeric(input$lambda_42_m2)
+    lambda14 = as.numeric(input$lambda_14); lambda14_2 = as.numeric(input$lambda_14_m2)
+    lambda24 = as.numeric(input$lambda_24); lambda24_2 = as.numeric(input$lambda_24_m2)
+    lambda34 = as.numeric(input$lambda_34); lambda34_2 = as.numeric(input$lambda_34_m2)
+    lambda43 = as.numeric(input$lambda_43); lambda43_2 = as.numeric(input$lambda_43_m2)
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda13, lambda14, lambda21, -lambda2, lambda23, lambda24, 
+                   lambda31, lambda32, -lambda3, lambda34, lambda41, lambda42, lambda43, -lambda4)
+    Tmatriz1 <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    
+    matriz_g_2 <-c(-lambda1_2, lambda12_2, lambda13_2, lambda14_2, lambda21_2, -lambda2_2, lambda23_2, lambda24_2, 
+                   lambda31_2, lambda32_2, -lambda3_2, lambda34_2, lambda41_2, lambda42_2, lambda43_2, -lambda4_2)
+    Tmatriz2 <- matrix(matriz_g_2, byrow = T, ncol = m, nrow = m)
+    
+    
+    alpha1_g = as.numeric(input$alpha_1g)
+    alpha2_g = as.numeric(input$alpha_2g)
+    alpha3_g = as.numeric(input$alpha_3g)
+    alpha4_g = 1- (alpha1_g+alpha2_g+alpha3_g)
+    
+    alpha <- c(alpha1_g, alpha2_g, alpha3_g, alpha4_g)
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    
+    
+  })
+  
+  output$General_2 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    puntocorte <- as.numeric(input$punt1)
+    m = 2
+    
+    #Matrix T1
+    lambda1 = as.numeric(input$lambda_11_2)
+    lambda2 = as.numeric(input$lambda_22_2)
+    lambda12 = as.numeric(input$lambda_12_2)
+    lambda21 = as.numeric(input$lambda_21_2)
+    
+    #Matrix T2
+    lambda1_2 = as.numeric(input$lambda_11_2_m2)
+    lambda2_2 = as.numeric(input$lambda_22_2_m2)
+    lambda12_2 = as.numeric(input$lambda_12_2_m2)
+    lambda21_2 = as.numeric(input$lambda_21_2_m2)
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda21, -lambda2)
+    Tmatriz1 <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    matriz_g_2 <-c(-lambda1_2, lambda12_2, lambda21_2, -lambda2_2)
+    Tmatriz2 <- matrix(matriz_g_2, byrow = T, ncol = m, nrow = m)
+    
+    
+    alpha1_g = as.numeric(input$alpha_1g_2)
+    alpha2_g = 1- (alpha1_g)
+    
+    alpha <- c(alpha1_g, alpha2_g)
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+  })
+  
+  output$General_3 <- renderPlot({
+    tamano <- as.numeric(input$malla); t <- seq(0, tamano, 0.001); t <-sort(t)
+    puntocorte <- as.numeric(input$punt1)
+    m = 3
+    
+    lambda1 = as.numeric(input$lambda_11_3)
+    lambda2 = as.numeric(input$lambda_22_3)
+    lambda3 = as.numeric(input$lambda_33_3)
+    
+    lambda12 = as.numeric(input$lambda_12_3)
+    lambda21 = as.numeric(input$lambda_21_3)
+    lambda31 = as.numeric(input$lambda_31_3)
+    
+    lambda13 = as.numeric(input$lambda_13_3)
+    lambda23 = as.numeric(input$lambda_23_3)
+    lambda32 = as.numeric(input$lambda_32_3)
+    
+    lambda1_2 = as.numeric(input$lambda_11_3_m2)
+    lambda12_2 = as.numeric(input$lambda_12_3_m2)
+    lambda13_2 = as.numeric(input$lambda_13_3_m2)
+    lambda21_2 = as.numeric(input$lambda_21_3_m2)
+    lambda2_2 = as.numeric(input$lambda_22_3_m2)
+    lambda23_2 = as.numeric(input$lambda_23_3_m2)
+    lambda31_2 = as.numeric(input$lambda_31_3_m2)
+    lambda32_2 = as.numeric(input$lambda_32_3_m2)
+    lambda3_2 = as.numeric(input$lambda_33_3_m2)
+    
+    
+    
+    matriz_g_d <-c(-lambda1, lambda12, lambda13, lambda21, -lambda2, lambda23, 
+                   lambda31, lambda32, -lambda3)
+    Tmatriz1 <- matrix(matriz_g_d, byrow = T, ncol = m, nrow = m)
+    
+    matriz_g_2 <-c(-lambda1_2, lambda12_2, lambda13_2, lambda21_2, -lambda2_2, lambda23_2, 
+                   lambda31_2, lambda32_2, -lambda3_2)
+    Tmatriz2 <- matrix(matriz_g_2, byrow = T, ncol = m, nrow = m)
+    
+    alpha1_g = as.numeric(input$alpha_1g_3)
+    alpha2_g = as.numeric(input$alpha_2g_3)
+    alpha3_g = 1- (alpha1_g+alpha2_g)
+    
+    alpha <- c(alpha1_g, alpha2_g, alpha3_g)
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    fdens <- fdensidad(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fdens, type = 'l', main = "Density Function", col = "white", 
+         lwd = 2,  ylab = "f(t)", xlab = "t", xlim = c(0, tail(t, n = 1)))
+    points(t[t<puntocorte],fdens[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],fdens[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fdist <- fdistribucion(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    # plot(x= t, y = fdist, type = 'l', main = "Función de distribución", col="#427fa5",
+    #      lwd = 2,  ylab = "F(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    # lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    fsup <- fsupervivencia(alpha, Tmatriz1, Tmatriz2, t, puntocorte, m)
+    plot(x= t, y = fsup, type = 'l', main = "Survival Function", col="#427fa5",
+         lwd = 2,  ylab = "R(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    rfallo <- fdens / fsup
+    plot(x= t, y = rfallo, type = 'l', main = "Hazard Rate", col = "white", 
+         lwd = 2,  ylab = "h(t)", xlab = "t", xlim = c(0, tail(t, n=1)))
+    points(t[t<puntocorte],rfallo[t<puntocorte],type="l",col="#427fa5",lwd=2)
+    points(t[t>puntocorte],rfallo[t>puntocorte],type="l",col="#427fa5",lwd=2)
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+    
+    racum <- -log(fsup)
+    plot(x= t, y = racum, type = 'l', main = "Cumulative Hazard Rate", col="#427fa5",
+         lwd = 2,  ylab = "H(t)", xlab = "t",xlim = c(0, tail(t, n=1)))
+    lines(x = matrix(puntocorte,801), y = seq(-100,100,0.25), lwd = 2, lty= 2, col = "red" )
+  
+  })
+  
+  url <- a("One Cut-Point Phase-Type Distributions in Reliability. An Application to Resistive Random Access Memories", 
+           href="https://www.mdpi.com/2227-7390/9/21/2734/pdf")
+  
+  output$tab <- renderUI({
+    tagList("URL link:", url) })
+  
+  output$numInput <- renderUI(sliderInput("punt1", "Cut-point:", min = 0, 
+                                           max = max(as.numeric(input$malla)), value = as.numeric(input$malla)/2,
+                                          step = 0.001))
+  }
+)
+```
+
+
+OCP Estimation
+=======================================================================
+
+```{r}
+shinyApp(
+  
+ui <- fluidPage(
+    tags$div(HTML("<script type='text/x-mathjax-config' >
+                MathJax.Hub.Config({
+                showProcessingMessages: true,
+                jax: ['input/TeX', 'output/PreviewHTML'],
+                });
+                </script >
+                ")),
+  # App title ----
+  useShinyjs(),
+  withMathJax(uiOutput("entered", inline = TRUE)),
+  title = "Estimation by using one cut-point Phase-type distributions",
+  theme = shinytheme("cerulean"),
+  fluidRow(
+    wellPanel(style="background-color:#427fa5;", width = "100%", height = "5%",
+              h1("Estimation by using one cut-point Phase-type distributions",
+                 style = "text-align:center;font-weight:bold;color:white;")
+    )
+  ), 
+  sidebarLayout(
+    sidebarPanel("",
+                 uiOutput("tab"),
+                 uiOutput("numInput"),
+            
+                 h4(strong("Data set")),
+                 
+                 p("The dataset must be recorded in .txt or .csv format with header. Values must 
+			be registered in a single column, without an id variable."),
+                 
+                 selectInput("database", "File format:", choices = list("txt", "csv")),
+                 
+                 tabPanel("Upload File", 
+                          fileInput("GetFile", "Upload File"), 
+                          p(strong("Data visualization")),
+                          tableOutput("text1")),
+                 p(strong("")),
+                 strong("Estimated Values: "),
+                 tableOutput("values"),
+                
+                 
+                 ),
+    mainPanel(
+      h1(strong("One cut-point Phase-type distribution")),
+      
+      
+      
+      fluidRow(
+        column(5, p("To estimate a Phase-type distribution with one cut-point \\( a \\),"
+                    ,strong("Erlang distribution"), "will be taken into account for the transition intensities matrices \\(\\mathbf{T}_i\\). Then,"),
+        p("$$ \\boldsymbol{\\alpha} = (0, 0, \\ldots , 1); $$ 
+                  $$\\mathbf{T}_i =\\begin{pmatrix}
+                   -\\lambda_i &  &  & \\\\ 
+                   \\lambda_i  & -\\lambda_i  &  & \\\\ 
+                   & \\ddots & \\ddots & \\\\ 
+                   &  &  \\lambda_i & -\\lambda_i 
+                     \\end{pmatrix}_{m\\times m},$$"), 
+               p("where \\( m\\) is the number of states.") ),
+        column(5,h4(strong("Density Function")),
+               p("$$f(x) = \\left \\{\\begin{matrix}
+                  \\boldsymbol{\\alpha} \\exp(\\mathbf{T}_1x) \\mathbf{T}_1^0 \\ ; \\ \\ x \\leq a \\\\ 
+                  \\boldsymbol{\\alpha} \\exp(\\mathbf{T}_1a) \\exp(\\mathbf{T}_2(x-a))\\mathbf{T}_2^0 \\ ; \\ \\ x > a
+                  \\end{matrix}\\right.$$"),),
+        
+        column(5,h4(strong("Survival Function")),
+               p("$$R(x)  = \\left\\{\\begin{matrix}
+                  \\boldsymbol{\\alpha} \\exp(\\mathbf{T}_1x) \\mathbf{e} \\ ;\\ \\ x \\leq a \\\\ 
+                 \\boldsymbol{\\alpha} \\exp(\\mathbf{T}_1a) \\exp(\\mathbf{T}_2(x-a)) \\mathbf{e} \\ ; \\ \\ x>a
+                \\end{matrix}\\right.$$ "),),
+        
+      ),
+      
+      
+    
+    
+      h2(strong("Estimation"),style = "color:steelblue"),
+      plotOutput("representation"),
+      fluidRow(
+        column(5, h4(strong("Mean and Variance")),
+               tableOutput("mediayvar")),
+        column(5, h4(strong("Goodness-of-Fit Test")),
+               tableOutput("testbondad"))
+      ),
+      
+      
+        
+      ),
+      
+      
+    ),
+
+),
+
+
+
+
+
+# Define server 
+server <- function(input, output) {
+  
+  url <- a("One Cut-Point Phase-Type Distributions in Reliability. An Application to Resistive Random Access Memories", 
+           href="https://www.mdpi.com/2227-7390/9/21/2734/pdf")
+ 
+  output$tab <- renderUI({
+    tagList("URL link:", url) })
+  
+  output$representation <- renderPlot({
+    
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datos <- sort(datafile[,1])
+    pto.corte <- as.numeric(input$punt1)
+  
+    
+    fases.cut=as.numeric(input$slider1)  #numero de fases para esta nueva distribucion
+    aux.T=diag(fases.cut)
+    for(i in 1:fases.cut-1){
+      aux.T[i+1,i]=1}
+    
+    densidad=function(datos,param){ #param es un vector que contiene los 3 parametros
+      if(pto.corte==0){
+        a=param[1]              #a: punto de corte
+        l1=param[2]             #lambda 1
+        l2=param[3]             #lambda 2
+      } else {
+        a=pto.corte             #a: punto de corte
+        l1=param[1]             #lambda 1
+        l2=param[2]             #lambda 2
+      }
+      
+      t=datos              #tiempo
+      
+      alpha=c(rep(0,fases.cut-1),1)        #vector alfa
+      uno=rep(1,fases.cut)                 #vector uno
+      T1=aux.T
+      T1[which(T1!=0)]=l1;diag(T1)=l1*(-1)  #sustituyo los valores por lambda 1
+      T2=T1
+      T2[which(T2!=0)]=l2;diag(T2)=l2*(-1)  #sustituyo los valores por lambda 2
+      
+      dens=vector()
+      for(i in 1:length(t)){
+        if(t[i]<=a){
+          dens[i]=alpha%*%expm(T1*t[i])%*%(-T1%*%uno)
+        } else{
+          dens[i]=alpha%*%expm(T1*a)%*%expm(T2*(t[i]-a))%*%(-T2%*%uno)
+        }
+      }
+      
+      return(dens)
+    }
+    
+    log.lik=function(datos,param){
+      y=sum(log(densidad(datos,param)))
+    }
+    
+    if(pto.corte==0){
+      maximizar=optim(par=c(0.5,0.5,0.5), fn=log.lik, datos=datos,
+                      lower=c(round(min(datos),2)+0.01, 0.001, 0.001),
+                      upper=c(round(max(datos),2)-0.01, Inf,Inf),
+                      control=list(fnscale=-1),method="L-BFGS-B",hessian=TRUE)
+    } else {
+      maximizar=optim(par=c(1,1), fn=log.lik, datos=datos,
+                      lower=c(0.001, 0.001),control=list(fnscale=-1),
+                      method="L-BFGS-B",hessian=TRUE)
+    }
+    
+    
+    phd=function(d,fases){
+      par(cex=1)
+      datos=sort(d)
+      x=log(datos);
+      pi=(1:length(x)-0.5)/length(x)
+      y=log(-log(1-pi))
+      
+      #Dibujamos los puntos
+      #plot(exp(x),exp(y),xlab="Time (t)",mgp = c(1.75, 0.5, 0),tck=0.025,
+      #     ylab="-Ln(1-F(t))",main="Fitting Erlang",col="grey")
+      
+      #Dibujamos ajuste Erlang
+      f=fases
+      a=f/mean(datos)
+      alpha=c(rep(0,f-1), 1) # alpha = (0, 0, ..., 1)
+      uno=rep(1,f)
+      T=diag(1,f)
+      diag(T)=-a
+      for(i in 1:f-1){
+        T[i+1,i]=a} # cambiado la matriz (debajo de la diagonal)
+      kk=vector()
+      for(i in 1:length(datos)){
+        kk[i]=-log(alpha%*%expm(T*datos[i])%*%uno)}
+      #points(datos,kk,type="l",col="blue",lwd=2)
+      
+      parametros=list(T,alpha,uno)
+      names(parametros)=c("T","alpha","uno")
+      return(parametros)
+    }
+    
+    
+    supervivencia=function(datos,param){ #param es un vector que contiene los 3 parametros
+      if(pto.corte==0){
+        a=param[1]              #a: punto de corte
+        l1=param[2]             #lambda 1
+        l2=param[3]             #lambda 2
+      } else {
+        a=pto.corte             #a: punto de corte
+        l1=param[1]             #lambda 1
+        l2=param[2]             #lambda 2
+      }
+      
+      t=datos              #tiempo
+      
+      alpha=c(rep(0,fases.cut-1), 1)        # alpha = (0,0, ..., 1)
+      uno=rep(1,fases.cut)                 #vector uno
+      T1=aux.T
+      T1[which(T1!=0)]=l1;diag(T1)=l1*(-1)  #sustituyo los valores por lambda 1
+      T2=T1
+      T2[which(T2!=0)]=l2;diag(T2)=l2*(-1)  #sustituyo los valores por lambda 2
+      
+      sup=vector()
+      for(i in 1:length(t)){
+        if(t[i]<=a){
+          sup[i]=(alpha%*%expm(T1*t[i])%*%(uno))
+        } else{
+          sup[i]=(alpha%*%expm(T1*a)%*%expm(T2*(t[i]-a))%*%(uno))
+        }
+      }
+      
+      return(sup)
+    }
+    
+    
+    
+    parametros <- c(as.numeric(input$punt1),maximizar$par[1], maximizar$par[2] )
+  
+    
+    
+    par(mfrow=c(2,2), mai = c(0.6, 0.5, 0.2, 0.1),mgp=c(1.8,0.5,0))
+    
+    ladensidad <- densidad(datos = datos, param = parametros)
+    PH=phd(datos,fases=fases.cut)
+    
+    dens_PH=sapply(1:length(datos), function(i)
+      -PH$alpha%*%expm(PH$T*datos[i])%*%PH$T%*%PH$uno)
+    
+    plot(x = density(datos, from = min(datos), to = max(datos)), lwd = 2, type = 'p', col = "grey",
+         main = "Density Function",xlim =c(0, tail(datos, n = 1)), xlab = "Datos", ylab = "f(t)",pch = 1,
+         ylim = c(min(ladensidad, dens_PH, density(datos, from = min(datos), to = max(datos))$y), 
+                  max(ladensidad, dens_PH, density(datos, from = min(datos), to = max(datos))$y)))
+  
+    points(datos[datos<parametros[1]],ladensidad[datos<parametros[1]],type="l",col="#427fa5",lwd=2)
+    points(datos[datos>parametros[1]],ladensidad[datos>parametros[1]],type="l",col="#427fa5",lwd=2)
+    
+    lines(x = datos, y = dens_PH, lwd = 2, type = "l", col = "darkorange", lty = 2)
+    lines(x = matrix(parametros[1],161), y = seq(-20,20,0.25), lwd = 2, lty= 3, col = "black" )
+    
+    legend("topright",c("PH Cut-point","PH","Experimental") ,lty=c(1,2,0),pch = c(NA, NA, 1),
+           col=c("#427fa5","darkorange","grey"), cex = 0.8)
+    
+    
+    
+    #ladistribucion <- distribucion(datos, param = parametros)
+    # 
+    # plot(x = datos, y =ladistribucion, lwd = 2, type = 'l', col = "#427fa5", main = "Función de Distribución",
+    #      xlim =c(0, tail(datos, n = 1)), xlab = "Datos", ylab = "F(t)")
+    # #lines(x = matrix(parametros[1],161), y = seq(-20,20,0.25), lwd = 2, lty= 2, col = "red" )
+    pi <- (1:length(datos)-0.5)/ length(datos)
+    # lines(x = datos, y = pi, col = "green", lwd = 2, lty = 2, type = "l")
+    
+    lasupervivencia <- supervivencia(datos, parametros)
+    sup_PH=sapply(1:length(datos), function(i)
+      PH$alpha%*%expm(PH$T*datos[i])%*%PH$uno)
+    
+    plot(x = datos, y = 1-pi, lwd = 2, type = 'p', col = "grey", main = "Function Survival",
+         xlim =c(0, tail(datos, n = 1)), xlab = "Datos", ylab = "R(t)", pch = 1, 
+         ylim = c(min(lasupervivencia, sup_PH, 1-pi), 
+                  max(lasupervivencia, sup_PH, 1-pi)))
+    lines(x = datos, y = sup_PH, lwd = 2, lty = 2, type = "l", col = "darkorange")
+    lines(x = datos, y = lasupervivencia, lwd = 2, lty = 1, type = "l", col ="#427fa5")
+    lines(x = matrix(parametros[1],161), y = seq(-20,20,0.25), lwd = 2, lty= 3, col = "black" )
+    # points(x = datos, y = 1-pi, col = "green", lwd = 2, pch = 1)
+    legend("topright",c("PH Cut-point","PH","Experimental"),lty=c(1,2,0),pch = c(NA, NA, 1),
+           col=c("#427fa5","darkorange","grey"), cex = 0.8)
+    
+    
+    razondefallo <- ladensidad / lasupervivencia
+    fallo_PH <- dens_PH /sup_PH
+    plot(x = muhaz(datos, min.time = min(datos)), lwd = 2, type = 'p', col = "grey",
+         main = "Failure Rate", xlim =c(0, tail(datos, n = 1)), xlab = "Datos", ylab = "h(t)", pch = 1, 
+         ylim = c(min(razondefallo, fallo_PH, muhaz(datos, min.time = min(datos))$haz.est), 
+                  max(razondefallo, fallo_PH, muhaz(datos, min.time = min(datos))$haz.est)))
+    
+    points(datos[datos<parametros[1]],razondefallo[datos<parametros[1]],type="l",col="#427fa5",lwd=2)
+    points(datos[datos>parametros[1]],razondefallo[datos>parametros[1]],type="l",col="#427fa5",lwd=2)
+    
+    lines(x = datos, y = fallo_PH, lwd = 2, lty = 2, type = "l", col = "darkorange")
+    lines(x = matrix(parametros[1],161), y = seq(-20,20,0.25), lwd = 2, lty= 3, col = "black" )
+    legend("bottomright",c("PH Cut-point","PH","Experimental"),lty=c(1,2,0, 2),pch = c(NA, NA, 1, NA),
+           col=c("#427fa5","darkorange","grey","red"), cex = 0.8)
+    
+    razonacumulada<- -log(lasupervivencia)
+    acum_PH <- -log(sup_PH)
+    plot(x = datos, y = -log(1-pi), lwd = 2, type = 'p', col = "grey", main = "Cumulative Failure Rate",
+         xlim =c(0, tail(datos, n = 1)), xlab = "Datos", ylab = "H(t)", pch = 1,
+         ylim = c(min(razonacumulada, acum_PH, -log(1-pi)), 
+                  max(razonacumulada, acum_PH, -log(1-pi))))
+    lines(x = datos, y = razonacumulada, lwd = 2, type = "l", col = "#427fa5")
+    lines(x = datos, y = acum_PH, lwd = 2, lty = 2, type = "l", col = "darkorange")
+    lines(x = matrix(parametros[1],161), y = seq(-20,20,0.25), lwd = 2, lty= 3, col = "black" )
+    legend("bottomright",c("PH Cut-point","PH","Experimental"),lty=c(1,2,0),pch = c(NA, NA, 1),
+           col=c("#427fa5","darkorange","grey"), cex = 0.8)
+    
+    
+  })
+  
+  output$values <- renderTable({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datos <- sort(datafile[,1])
+    pto.corte <- as.numeric(input$punt1)
+    
+    fases.cut=as.numeric(input$slider1)  #numero de fases para esta nueva distribucion
+    aux.T=diag(fases.cut)
+    for(i in 1:fases.cut-1){
+      aux.T[i+1,i]=1}
+    
+    densidad=function(datos,param){ #param es un vector que contiene los 3 parametros
+      if(pto.corte==0){
+        a=param[1]              #a: punto de corte
+        l1=param[2]             #lambda 1
+        l2=param[3]             #lambda 2
+      } else {
+        a=pto.corte             #a: punto de corte
+        l1=param[1]             #lambda 1
+        l2=param[2]             #lambda 2
+      }
+      
+      t=datos              #tiempo
+      
+      alpha=c(rep(0,fases.cut-1),1)        #vector alfa
+      uno=rep(1,fases.cut)                 #vector uno
+      T1=aux.T
+      T1[which(T1!=0)]=l1;diag(T1)=l1*(-1)  #sustituyo los valores por lambda 1
+      T2=T1
+      T2[which(T2!=0)]=l2;diag(T2)=l2*(-1)  #sustituyo los valores por lambda 2
+      
+      dens=vector()
+      for(i in 1:length(t)){
+        if(t[i]<=a){
+          dens[i]=alpha%*%expm(T1*t[i])%*%(-T1%*%uno)
+        } else{
+          dens[i]=alpha%*%expm(T1*a)%*%expm(T2*(t[i]-a))%*%(-T2%*%uno)
+        }
+      }
+      
+      return(dens)
+    }
+    
+    log.lik=function(datos,param){
+      y=sum(log(densidad(datos,param)))
+    }
+    
+    if(pto.corte==0){
+      maximizar=optim(par=c(0.5,0.5,0.5), fn=log.lik, datos=datos,
+                      lower=c(round(min(datos),2)+0.01, 0.001, 0.001),
+                      upper=c(round(max(datos),2)-0.01, Inf,Inf),
+                      control=list(fnscale=-1),method="L-BFGS-B",hessian=TRUE)
+    } else {
+      maximizar=optim(par=c(1,1), fn=log.lik, datos=datos,
+                      lower=c(0.001, 0.001),control=list(fnscale=-1),
+                      method="L-BFGS-B",hessian=TRUE)
+    }
+    
+    parametros <- c(as.numeric(input$punt1),maximizar$par[1], maximizar$par[2] )
+    
+    phd=function(d,fases){
+      par(cex=1)
+      datos=sort(d)
+      x=log(datos);
+      pi=(1:length(x)-0.5)/length(x)
+      y=log(-log(1-pi))
+      
+      #Dibujamos los puntos
+      #plot(exp(x),exp(y),xlab="Time (t)",mgp = c(1.75, 0.5, 0),tck=0.025,
+      #     ylab="-Ln(1-F(t))",main="Fitting Erlang",col="grey")
+      
+      #Dibujamos ajuste Erlang
+      f=fases
+      a=f/mean(datos)
+      alpha=c(rep(0,f-1), 1) # alpha = (0, 0, ..., 1)
+      uno=rep(1,f)
+      T=diag(1,f)
+      diag(T)=-a
+      for(i in 1:f-1){
+        T[i+1,i]=a} # cambiado la matriz (debajo de la diagonal)
+      kk=vector()
+      for(i in 1:length(datos)){
+        kk[i]=-log(alpha%*%expm(T*datos[i])%*%uno)}
+      #points(datos,kk,type="l",col="blue",lwd=2)
+      
+      parametros=list(T,alpha,uno)
+      names(parametros)=c("T","alpha","uno")
+      return(parametros)
+    }
+    PH=phd(datos,fases=fases.cut)
+    
+    matriz <- matrix(c(parametros, fases.cut, PH$T[2,1]), byrow = T, ncol = 1)
+    rownames(matriz) <- c("Cut-point (a)", "Lambda T1", "Lambda T2", "Number of states", "Lambda PH")
+    colnames(matriz) <- c("")
+    print(matriz)
+    
+  }, rownames = T, digits = 6, colnames = F)
+  
+  output$mediayvar <- renderTable({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datos <- sort(datafile[,1])
+    pto.corte <- as.numeric(input$punt1)
+    
+    fases.cut=as.numeric(input$slider1)  #numero de fases para esta nueva distribucion
+    aux.T=diag(fases.cut)
+    for(i in 1:fases.cut-1){
+      aux.T[i+1,i]=1}
+    
+    densidad=function(datos,param){ #param es un vector que contiene los 3 parametros
+      if(pto.corte==0){
+        a=param[1]              #a: punto de corte
+        l1=param[2]             #lambda 1
+        l2=param[3]             #lambda 2
+      } else {
+        a=pto.corte             #a: punto de corte
+        l1=param[1]             #lambda 1
+        l2=param[2]             #lambda 2
+      }
+      
+      t=datos              #tiempo
+      
+      alpha=c(rep(0,fases.cut-1),1)        #vector alfa
+      uno=rep(1,fases.cut)                 #vector uno
+      T1=aux.T
+      T1[which(T1!=0)]=l1;diag(T1)=l1*(-1)  #sustituyo los valores por lambda 1
+      T2=T1
+      T2[which(T2!=0)]=l2;diag(T2)=l2*(-1)  #sustituyo los valores por lambda 2
+      
+      dens=vector()
+      for(i in 1:length(t)){
+        if(t[i]<=a){
+          dens[i]=alpha%*%expm(T1*t[i])%*%(-T1%*%uno)
+        } else{
+          dens[i]=alpha%*%expm(T1*a)%*%expm(T2*(t[i]-a))%*%(-T2%*%uno)
+        }
+      }
+      
+      return(dens)
+    }
+    
+    log.lik=function(datos,param){
+      y=sum(log(densidad(datos,param)))
+    }
+    
+    if(pto.corte==0){
+      maximizar=optim(par=c(0.5,0.5,0.5), fn=log.lik, datos=datos,
+                      lower=c(round(min(datos),2)+0.01, 0.001, 0.001),
+                      upper=c(round(max(datos),2)-0.01, Inf,Inf),
+                      control=list(fnscale=-1),method="L-BFGS-B",hessian=TRUE)
+    } else {
+      maximizar=optim(par=c(1,1), fn=log.lik, datos=datos,
+                      lower=c(0.001, 0.001),control=list(fnscale=-1),
+                      method="L-BFGS-B",hessian=TRUE)
+    }
+    
+    parametros <- c(as.numeric(input$punt1),maximizar$par[1], maximizar$par[2] )
+    
+    phd=function(d,fases){
+      par(cex=1)
+      datos=sort(d)
+      x=log(datos);
+      pi=(1:length(x)-0.5)/length(x)
+      y=log(-log(1-pi))
+      
+      #Dibujamos los puntos
+      #plot(exp(x),exp(y),xlab="Time (t)",mgp = c(1.75, 0.5, 0),tck=0.025,
+      #     ylab="-Ln(1-F(t))",main="Fitting Erlang",col="grey")
+      
+      #Dibujamos ajuste Erlang
+      f=fases
+      a=f/mean(datos)
+      alpha=c(rep(0,f-1), 1) # alpha = (0, 0, ..., 1)
+      uno=rep(1,f)
+      T=diag(1,f)
+      diag(T)=-a
+      for(i in 1:f-1){
+        T[i+1,i]=a} # cambiado la matriz (debajo de la diagonal)
+      kk=vector()
+      for(i in 1:length(datos)){
+        kk[i]=-log(alpha%*%expm(T*datos[i])%*%uno)}
+      #points(datos,kk,type="l",col="blue",lwd=2)
+      
+      parametros=list(T,alpha,uno)
+      names(parametros)=c("T","alpha","uno")
+      return(parametros)
+    }
+    
+    PH=phd(datos,fases=fases.cut)
+    
+    mean_emp=mean(datos)
+    var_emp=var(datos)*(length(datos)-1)/length(datos)
+    
+    mean_ph=-PH[[2]]%*%solve(PH[[1]])%*%PH[[3]]
+    var_ph=2*PH[[2]]%*%solve(PH[[1]]%*%PH[[1]])%*%PH[[3]]-mean_ph^2
+    
+    #-> Funcion para calcular E[X] y E[X^2] de la distribucion cut
+    
+    m.cut=function(datos,param){	#param es un vector que contiene los 3 parametros
+      if(pto.corte==0){
+        a=param[1]		#a: punto de corte
+        l1=param[2]		#lambda 1
+        l2=param[3]		#lambda 2
+      } else {
+        a=pto.corte		#a: punto de corte
+        l1=param[1]		#lambda 1
+        l2=param[2]		#lambda 2
+      }	
+      
+      t=datos 		#tiempo
+      
+      alpha=c(rep(0,fases.cut-1), 1)	#vector alfa
+      uno=rep(1,fases.cut)			#vector uno			#vector uno
+      T1=aux.T
+      T1[which(T1!=0)]=l1;diag(T1)=l1*(-1)  #sustituyo los valores por lambda 1
+      T2=T1
+      T2[which(T2!=0)]=l2;diag(T2)=l2*(-1)  #sustituyo los valores por lambda 2
+      
+      media=-alpha%*%solve(T1)%*%uno+alpha%*%expm(a*T1)%*%(solve(T1)-solve(T2))%*%uno
+      m2=2*alpha%*%solve(T1%*%T1)%*%uno-2*alpha%*%expm(a*T1)%*%(solve(T2)%*%(a*diag(nrow(T1))-solve(T2))-solve(T1)%*%(a*diag(nrow(T1))-solve(T1)))%*%uno
+      result=list(media,m2)
+      names(result)=c("E[X]","E[X^2]")
+      return(result)
+    }
+    
+    mean_cut=m.cut(datos,parametros)[[1]]
+    var_cut=m.cut(datos,parametros)[[2]]-mean_cut^2
+    
+    matriz=matrix(c(mean_ph,var_ph,mean_cut,var_cut,mean_emp,var_emp),ncol=2,byrow=T)
+    colnames(matriz)=c("Media","Varianza")
+    rownames(matriz)=c("PH","PH Cut-Point", "Experimental")
+    print(matriz) 
+    
+  }, rownames = T, digits = 5)
+  
+  output$testbondad <- renderTable({
+    infile <- input$GetFile
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    datos <- sort(datafile[,1])
+    pto.corte <- as.numeric(input$punt1)
+    
+    fases.cut=as.numeric(input$slider1)  #nÃÂº de fases para esta nueva distribucion
+    aux.T=diag(fases.cut)
+    for(i in 1:fases.cut-1){
+      aux.T[i+1,i]=1}
+    
+    densidad=function(datos,param){ #param es un vector que contiene los 3 parametros
+      if(pto.corte==0){
+        a=param[1]              #a: punto de corte
+        l1=param[2]             #lambda 1
+        l2=param[3]             #lambda 2
+      } else {
+        a=pto.corte             #a: punto de corte
+        l1=param[1]             #lambda 1
+        l2=param[2]             #lambda 2
+      }
+      
+      t=datos              #tiempo
+      
+      alpha=c(rep(0,fases.cut-1),1)        #vector alfa
+      uno=rep(1,fases.cut)                 #vector uno
+      T1=aux.T
+      T1[which(T1!=0)]=l1;diag(T1)=l1*(-1)  #sustituyo los valores por lambda 1
+      T2=T1
+      T2[which(T2!=0)]=l2;diag(T2)=l2*(-1)  #sustituyo los valores por lambda 2
+      
+      dens=vector()
+      for(i in 1:length(t)){
+        if(t[i]<=a){
+          dens[i]=alpha%*%expm(T1*t[i])%*%(-T1%*%uno)
+        } else{
+          dens[i]=alpha%*%expm(T1*a)%*%expm(T2*(t[i]-a))%*%(-T2%*%uno)
+        }
+      }
+      
+      return(dens)
+    }
+    
+    log.lik=function(datos,param){
+      y=sum(log(densidad(datos,param)))
+    }
+    
+    if(pto.corte==0){
+      maximizar=optim(par=c(0.5,0.5,0.5), fn=log.lik, datos=datos,
+                      lower=c(round(min(datos),2)+0.01, 0.001, 0.001),
+                      upper=c(round(max(datos),2)-0.01, Inf,Inf),
+                      control=list(fnscale=-1),method="L-BFGS-B",hessian=TRUE)
+    } else {
+      maximizar=optim(par=c(1,1), fn=log.lik, datos=datos,
+                      lower=c(0.001, 0.001),control=list(fnscale=-1),
+                      method="L-BFGS-B",hessian=TRUE)
+    }
+    
+    parametros <- c(as.numeric(input$punt1),maximizar$par[1], maximizar$par[2] )
+    
+    phd=function(d,fases){
+      par(cex=1)
+      datos=sort(d)
+      x=log(datos);
+      pi=(1:length(x)-0.5)/length(x)
+      y=log(-log(1-pi))
+      
+      #Dibujamos los puntos
+      #plot(exp(x),exp(y),xlab="Time (t)",mgp = c(1.75, 0.5, 0),tck=0.025,
+      #     ylab="-Ln(1-F(t))",main="Fitting Erlang",col="grey")
+      
+      #Dibujamos ajuste Erlang
+      f=fases
+      a=f/mean(datos)
+      alpha=c(rep(0,f-1), 1) # alpha = (0, 0, ..., 1)
+      uno=rep(1,f)
+      T=diag(1,f)
+      diag(T)=-a
+      for(i in 1:f-1){
+        T[i+1,i]=a} # cambiado la matriz (debajo de la diagonal)
+      kk=vector()
+      for(i in 1:length(datos)){
+        kk[i]=-log(alpha%*%expm(T*datos[i])%*%uno)}
+      #points(datos,kk,type="l",col="blue",lwd=2)
+      
+      parametros=list(T,alpha,uno)
+      names(parametros)=c("T","alpha","uno")
+      return(parametros)
+    }
+    
+    PH=phd(datos,fases=fases.cut)
+    
+    FD=function(datos,param){	#param es un vector que contiene los 3 parametros
+      if(pto.corte==0){
+        a=param[1]		#a: punto de corte
+        l1=param[2]		#lambda 1
+        l2=param[3]		#lambda 2
+      } else {
+        a=pto.corte		#a: punto de corte
+        l1=param[1]		#lambda 1
+        l2=param[2]		#lambda 2
+      }	
+      
+      t=datos 		#tiempo
+      
+      alpha=c(rep(0,fases.cut-1),1)	#vector alfa
+      uno=rep(1,fases.cut)			#vector uno			#vector uno
+      T1=aux.T
+      T1[which(T1!=0)]=l1;diag(T1)=l1*(-1)  #sustituyo los valores por lambda 1
+      T2=T1
+      T2[which(T2!=0)]=l2;diag(T2)=l2*(-1)  #sustituyo los valores por lambda 2
+      
+      FD=vector()
+      for(i in 1:length(t)){
+        if(t[i]<=a){
+          FD[i]=1-alpha%*%expm(T1*t[i])%*%uno
+        } else{
+          FD[i]=1-alpha%*%expm(T1*a)%*%expm(T2*(t[i]-a))%*%uno
+        }
+      }
+      
+      return(FD)
+    }
+    FD_cut <- FD(datos, parametros)
+    
+    # a = PH$T[2,1] rate
+    f=fases.cut; a=f/mean(datos) 
+    ph_test_ks <- ks.test(datos,"pgamma",shape=f, scale=1/a)
+    ph_test_ad <- ad.test(datos,"pgamma",shape=f, scale=1/a)
+    
+    
+    cut_test_ad <- ad.test(FD_cut,"pgamma", shape = f , rate = parametros)
+    matriz<- matrix(c( ph_test_ad$p.value,  ad.test(FD_cut)$p.value), byrow = T, ncol = 1)
+    
+    colnames(matriz) <- c( "AD-test")
+    rownames(matriz) <- c("PH", "PH Cut-Point")
+    print(matriz)
+    
+    
+  }, rownames = T, digits = 5)
+  
+
+    output$text1 <- renderTable({
+    infile <- input$GetFile
+    if (is.null(infile))
+      return(NULL)
+    datafile <- switch (input$database,
+                        'csv' = read.csv(infile$datapath, header = T),
+                        'txt' = read.table(infile$datapath, header = T)
+    )
+    
+    head(datafile)
+  })
+  
+  output$text2 <- renderPrint({
+    numerodeestados <- as.numeric(input$slider1)
+    cat(c("Number of states:", numerodeestados))
+  })
+  
+    fdb <- function(file, tipo){
+      infile <- file
+      if (is.null(infile))
+        return(NULL)
+      datafile <- switch (tipo,
+                          'csv' = read.csv(infile$datapath, header = T),
+                          'txt' = read.table(infile$datapath, header = T)
+      )
+      
+      datafile[,1] <- sort(datafile[,1])
+      return(datafile[,1])
+  }
+  
+  output$numInput <- renderUI(
+    tagList(
+      sliderInput("punt1", "Cut-point (a):", min = round(min(fdb(file = input$GetFile, tipo = input$database)), 2),
+                max = round(max(fdb(file = input$GetFile, tipo = input$database)), 2), 
+                value = round(mean(fdb(file = input$GetFile, tipo = input$database)), 2),
+                step = 0.01),
+    numericInput("slider1", strong("Number of states"),min = 2, value = 2, step = 1)
+    )
+    
+  )}
+)
 ```
 
